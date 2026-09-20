@@ -8,27 +8,10 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 
-// Especificación XML de D-Bus para Mutter DisplayConfig
-const MutterDisplayConfigXml = `
-<node>
-  <interface name="org.gnome.Mutter.DisplayConfig">
-    <method name="GetCurrentState">
-      <arg type="u" name="serial" direction="out" />
-      <arg type="a((ssss)a(siiddada{sv})a{sv})" name="monitors" direction="out" />
-      <arg type="a(iiduba(ssss)a{sv})" name="logical_monitors" direction="out" />
-      <arg type="a{sv}" name="properties" direction="out" />
-    </method>
-    <method name="ApplyMonitorsConfig">
-      <arg type="u" name="serial" direction="in" />
-      <arg type="u" name="method" direction="in" />
-      <arg type="a(iiduba(ssa{sv}))" name="logical_monitors" direction="in" />
-      <arg type="a{sv}" name="properties" direction="in" />
-    </method>
-    <signal name="MonitorsChanged" />
-  </interface>
-</node>`;
-
-const DisplayConfigProxy = Gio.DBusProxy.makeProxyWrapper(MutterDisplayConfigXml);
+// Constantes D-Bus de Mutter DisplayConfig
+const MUTTER_BUS_NAME = 'org.gnome.Mutter.DisplayConfig';
+const MUTTER_OBJECT_PATH = '/org/gnome/Mutter/DisplayConfig';
+const MUTTER_INTERFACE = 'org.gnome.Mutter.DisplayConfig';
 
 // Opciones de escala de pantalla (valores fraccionarios de Mutter)
 const DISPLAY_SCALES = [
@@ -85,7 +68,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
         box.add_child(icon);
         this.add_child(box);
 
-        // Inicializar configuraciones GSettings de fuentes
+        // Inicializar GSettings de fuentes (en memoria, instantáneo)
         try {
             this._interfaceSettings = new Gio.Settings({ schema_id: 'org.gnome.desktop.interface' });
         } catch (e) {
@@ -93,27 +76,17 @@ class QuickScaleIndicator extends PanelMenu.Button {
             this._interfaceSettings = null;
         }
 
-        // Inicializar proxy D-Bus de Mutter
-        try {
-            this._proxy = new DisplayConfigProxy(
-                Gio.DBus.session,
-                'org.gnome.Mutter.DisplayConfig',
-                '/org/gnome/Mutter/DisplayConfig'
-            );
-        } catch (e) {
-            console.error(`[QuickScale] Error inicializando DisplayConfigProxy: ${e.message}`);
-            this._proxy = null;
-        }
-
         // Construir interfaz del menú desplegable
         this._buildMenu();
 
-        // Conectar señales para sincronización bidireccional en tiempo real
+        // Conectar eventos y señales de forma 100% asíncrona sin proxies bloqueantes
         this._connectSignals();
 
-        // Cargar estado inicial
-        this._syncDisplayScale();
+        // Sincronizar fuentes de forma inmediata
         this._syncFontScale();
+
+        // Sincronización inicial asíncrona no bloqueante
+        this._syncDisplayScale();
     }
 
     _buildMenu() {
@@ -160,7 +133,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
     }
 
     _connectSignals() {
-        // Sincronizar al abrir el menú
+        // Sincronizar bajo demanda al abrir el menú (0 coste de CPU en reposo)
         this._openStateId = this.menu.connect('open-state-changed', (menu, isOpen) => {
             if (isOpen && !this._destroyed) {
                 this._syncDisplayScale();
@@ -168,13 +141,24 @@ class QuickScaleIndicator extends PanelMenu.Button {
             }
         });
 
-        // Sincronizar cambios externos en Mutter (MonitorsChanged)
-        if (this._proxy) {
-            this._monitorsChangedId = this._proxy.connectSignal('MonitorsChanged', () => {
-                if (!this._destroyed) {
-                    this._syncDisplayScale();
+        // Suscripción de señal D-Bus de Mutter totalmente asíncrona (sin GInitable / sin introspección)
+        try {
+            this._monitorsChangedId = Gio.DBus.session.signal_subscribe(
+                MUTTER_BUS_NAME,
+                MUTTER_INTERFACE,
+                'MonitorsChanged',
+                MUTTER_OBJECT_PATH,
+                null,
+                Gio.DBusSignalFlags.NONE,
+                () => {
+                    if (!this._destroyed && this.menu.isOpen) {
+                        this._syncDisplayScale();
+                    }
                 }
-            });
+            );
+        } catch (e) {
+            console.error(`[QuickScale] Error suscribiendo a MonitorsChanged: ${e.message}`);
+            this._monitorsChangedId = null;
         }
 
         // Sincronizar cambios externos en factor de escala de fuentes
@@ -216,176 +200,201 @@ class QuickScaleIndicator extends PanelMenu.Button {
     }
 
     _syncDisplayScale() {
-        if (!this._proxy || this._destroyed) return;
+        if (this._destroyed) return;
 
-        this._proxy.GetCurrentStateRemote((result, error) => {
-            if (error || this._destroyed) {
-                if (error) {
-                    console.error(`[QuickScale] Error en GetCurrentState: ${error.message}`);
+        // Llamada D-Bus nativa directa 100% asíncrona: nunca bloquea el bucle principal de GNOME Shell
+        Gio.DBus.session.call(
+            MUTTER_BUS_NAME,
+            MUTTER_OBJECT_PATH,
+            MUTTER_INTERFACE,
+            'GetCurrentState',
+            null,
+            null,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            null,
+            (conn, res) => {
+                if (this._destroyed) return;
+
+                try {
+                    const reply = conn.call_finish(res);
+                    const [, , logicalMonitors] = reply.deepUnpack();
+                    if (!logicalMonitors || logicalMonitors.length === 0) return;
+
+                    const primaryLm = logicalMonitors.find(lm => lm[4] === true) || logicalMonitors[0];
+                    const currentScale = primaryLm[2];
+
+                    for (const { item, target } of this._displayMenuItems) {
+                        const isActive = Math.abs(currentScale - target) < 0.04;
+                        item.setOrnament(isActive ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
+                    }
+                } catch (err) {
+                    console.error(`[QuickScale] Error en GetCurrentState: ${err.message}`);
                 }
-                return;
             }
-
-            try {
-                const [, , logicalMonitors] = result;
-                if (!logicalMonitors || logicalMonitors.length === 0) return;
-
-                // Identificar el monitor principal
-                const primaryLm = logicalMonitors.find(lm => lm[4] === true) || logicalMonitors[0];
-                const currentScale = primaryLm[2];
-
-                for (const { item, target } of this._displayMenuItems) {
-                    const isActive = Math.abs(currentScale - target) < 0.04;
-                    item.setOrnament(isActive ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
-                }
-            } catch (err) {
-                console.error(`[QuickScale] Error procesando estado de pantallas: ${err.message}`);
-            }
-        });
+        );
     }
 
     _onDisplayScaleSelected(scaleOption) {
-        if (!this._proxy || this._destroyed) return;
+        if (this._destroyed) return;
 
-        this._proxy.GetCurrentStateRemote((result, error) => {
-            if (error || this._destroyed) {
-                if (error) {
-                    console.error(`[QuickScale] Error al obtener estado previo a aplicar escala: ${error.message}`);
-                }
-                return;
-            }
+        Gio.DBus.session.call(
+            MUTTER_BUS_NAME,
+            MUTTER_OBJECT_PATH,
+            MUTTER_INTERFACE,
+            'GetCurrentState',
+            null,
+            null,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            null,
+            (conn, res) => {
+                if (this._destroyed) return;
 
-            try {
-                const [serial, monitors, logicalMonitors] = result;
-                if (!logicalMonitors || logicalMonitors.length === 0) return;
+                try {
+                    const reply = conn.call_finish(res);
+                    const [serial, monitors, logicalMonitors] = reply.deepUnpack();
+                    if (!logicalMonitors || logicalMonitors.length === 0) return;
 
-                const primaryIndex = logicalMonitors.findIndex(lm => lm[4] === true);
-                const targetIndex = primaryIndex >= 0 ? primaryIndex : 0;
-                const primaryLm = logicalMonitors[targetIndex];
-                const primaryConnector = primaryLm[5]?.[0]?.[0];
+                    const primaryIndex = logicalMonitors.findIndex(lm => lm[4] === true);
+                    const targetIndex = primaryIndex >= 0 ? primaryIndex : 0;
+                    const primaryLm = logicalMonitors[targetIndex];
+                    const primaryConnector = primaryLm[5]?.[0]?.[0];
 
-                // Buscar el modo actual del monitor principal para obtener resolución y supported_scales
-                let primaryCurrentMode = null;
-                for (const m of monitors) {
-                    if (m[0][0] === primaryConnector) {
-                        for (const mode of m[1]) {
-                            const modeProps = mode[6];
-                            const isCurrent = modeProps['is-current']?.deepUnpack?.() ?? (modeProps['is-current'] === true);
-                            if (isCurrent) {
-                                primaryCurrentMode = mode;
-                                break;
+                    // Buscar el modo actual del monitor principal para obtener resolución y supported_scales
+                    let primaryCurrentMode = null;
+                    for (const m of monitors) {
+                        if (m[0][0] === primaryConnector) {
+                            for (const mode of m[1]) {
+                                const val = mode[6]['is-current']?.deepUnpack?.() ?? mode[6]['is-current'];
+                                if (val === true) {
+                                    primaryCurrentMode = mode;
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }
+
+                    // Ajustar al valor exacto soportado por Mutter (por ej. 1.3333333730697632 o 1.6666666269302368)
+                    let exactScale = scaleOption.target;
+                    if (primaryCurrentMode && Array.isArray(primaryCurrentMode[5])) {
+                        const supported = primaryCurrentMode[5].map(s => (s?.deepUnpack ? s.deepUnpack() : s));
+                        let closest = null;
+                        let minDiff = Infinity;
+                        for (const s of supported) {
+                            const diff = Math.abs(s - scaleOption.target);
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closest = s;
                             }
                         }
-                        break;
-                    }
-                }
-
-                // Ajustar al valor exacto soportado por Mutter (por ej. 1.3333333730697632 o 1.6666666269302368)
-                let exactScale = scaleOption.target;
-                if (primaryCurrentMode && Array.isArray(primaryCurrentMode[5])) {
-                    const supported = primaryCurrentMode[5].map(s => (s?.deepUnpack ? s.deepUnpack() : s));
-                    let closest = null;
-                    let minDiff = Infinity;
-                    for (const s of supported) {
-                        const diff = Math.abs(s - scaleOption.target);
-                        if (diff < minDiff) {
-                            minDiff = diff;
-                            closest = s;
-                        }
-                    }
-                    if (minDiff < 0.05 && closest !== null) {
-                        exactScale = closest;
-                    }
-                }
-
-                // Cálculo de desplazamiento en layouts multimonitor para evitar superposiciones inválidas
-                const oldScale = primaryLm[2];
-                const modeW = primaryCurrentMode ? primaryCurrentMode[1] : 0;
-                const modeH = primaryCurrentMode ? primaryCurrentMode[2] : 0;
-
-                let deltaW = 0;
-                let deltaH = 0;
-                if (modeW > 0 && oldScale > 0 && exactScale > 0) {
-                    const oldLogicalW = Math.round(modeW / oldScale);
-                    const newLogicalW = Math.round(modeW / exactScale);
-                    deltaW = newLogicalW - oldLogicalW;
-
-                    const oldLogicalH = Math.round(modeH / oldScale);
-                    const newLogicalH = Math.round(modeH / exactScale);
-                    deltaH = newLogicalH - oldLogicalH;
-                }
-
-                // Reconstruir la configuración de monitores lógicos preservando resolución nativa y refresco
-                const newLogicalMonitors = logicalMonitors.map((lm, idx) => {
-                    const [x, y, scale, transform, isPrimary, lmMonitors] = lm;
-                    const isTarget = idx === targetIndex;
-
-                    let newX = x;
-                    let newY = y;
-
-                    // Desplazar monitores adyacentes a la derecha o abajo si la escala del principal cambia
-                    if (!isTarget && deltaW !== 0 && oldScale > 0) {
-                        if (x >= Math.round(modeW / oldScale)) {
-                            newX = Math.max(0, x + deltaW);
-                        }
-                    }
-                    if (!isTarget && deltaH !== 0 && oldScale > 0) {
-                        if (y >= Math.round(modeH / oldScale)) {
-                            newY = Math.max(0, y + deltaH);
+                        if (minDiff < 0.05 && closest !== null) {
+                            exactScale = closest;
                         }
                     }
 
-                    const newScale = isTarget ? exactScale : scale;
+                    // Cálculo de desplazamiento en layouts multimonitor para evitar superposiciones inválidas
+                    const oldScale = primaryLm[2];
+                    const modeW = primaryCurrentMode ? primaryCurrentMode[1] : 0;
+                    const modeH = primaryCurrentMode ? primaryCurrentMode[2] : 0;
 
-                    const newLmMonitors = lmMonitors.map(mon => {
-                        const connector = mon[0];
-                        let currentModeId = '';
+                    let deltaW = 0;
+                    let deltaH = 0;
+                    if (modeW > 0 && oldScale > 0 && exactScale > 0) {
+                        const oldLogicalW = Math.round(modeW / oldScale);
+                        const newLogicalW = Math.round(modeW / exactScale);
+                        deltaW = newLogicalW - oldLogicalW;
 
-                        for (const m of monitors) {
-                            if (m[0][0] === connector) {
-                                for (const mode of m[1]) {
-                                    const mProps = mode[6];
-                                    const isCur = mProps['is-current']?.deepUnpack?.() ?? (mProps['is-current'] === true);
-                                    if (isCur) {
-                                        currentModeId = mode[0];
-                                        break;
+                        const oldLogicalH = Math.round(modeH / oldScale);
+                        const newLogicalH = Math.round(modeH / exactScale);
+                        deltaH = newLogicalH - oldLogicalH;
+                    }
+
+                    // Reconstruir la configuración de monitores lógicos preservando resolución nativa y refresco
+                    const newLogicalMonitors = logicalMonitors.map((lm, idx) => {
+                        const [x, y, scale, transform, isPrimary, lmMonitors] = lm;
+                        const isTarget = idx === targetIndex;
+
+                        let newX = x;
+                        let newY = y;
+
+                        // Desplazar monitores adyacentes a la derecha o abajo si la escala del principal cambia
+                        if (!isTarget && deltaW !== 0 && oldScale > 0) {
+                            if (x >= Math.round(modeW / oldScale)) {
+                                newX = Math.max(0, x + deltaW);
+                            }
+                        }
+                        if (!isTarget && deltaH !== 0 && oldScale > 0) {
+                            if (y >= Math.round(modeH / oldScale)) {
+                                newY = Math.max(0, y + deltaH);
+                            }
+                        }
+
+                        const newScale = isTarget ? exactScale : scale;
+
+                        const newLmMonitors = lmMonitors.map(mon => {
+                            const connector = mon[0];
+                            let currentModeId = '';
+
+                            for (const m of monitors) {
+                                if (m[0][0] === connector) {
+                                    for (const mode of m[1]) {
+                                        const val = mode[6]['is-current']?.deepUnpack?.() ?? mode[6]['is-current'];
+                                        if (val === true) {
+                                            currentModeId = mode[0];
+                                            break;
+                                        }
                                     }
+                                    if (!currentModeId && m[1].length > 0) {
+                                        currentModeId = m[1][0][0];
+                                    }
+                                    break;
                                 }
-                                if (!currentModeId && m[1].length > 0) {
-                                    currentModeId = m[1][0][0];
-                                }
-                                break;
                             }
-                        }
 
-                        return [connector, currentModeId, {}];
+                            return [connector, currentModeId, {}];
+                        });
+
+                        return [newX, newY, newScale, transform, isPrimary, newLmMonitors];
                     });
 
-                    return [newX, newY, newScale, transform, isPrimary, newLmMonitors];
-                });
+                    // Aplicar de forma persistente en Mutter mediante llamada D-Bus asíncrona
+                    Gio.DBus.session.call(
+                        MUTTER_BUS_NAME,
+                        MUTTER_OBJECT_PATH,
+                        MUTTER_INTERFACE,
+                        'ApplyMonitorsConfig',
+                        new GLib.Variant('(uua(iiduba(ssa{sv}))a{sv})', [
+                            serial,
+                            METHOD_PERSISTENT,
+                            newLogicalMonitors,
+                            {}
+                        ]),
+                        null,
+                        Gio.DBusCallFlags.NONE,
+                        -1,
+                        null,
+                        (conn2, res2) => {
+                            if (this._destroyed) return;
 
-                // Aplicar de forma persistente en Mutter
-                this._proxy.ApplyMonitorsConfigRemote(
-                    serial,
-                    METHOD_PERSISTENT,
-                    newLogicalMonitors,
-                    {},
-                    (applyResult, applyError) => {
-                        if (applyError) {
-                            console.error(`[QuickScale] Error aplicando configuración de pantalla: ${applyError.message}`);
-                            Main.notify(
-                                'Quick Scale Switcher',
-                                _('Error aplicando escala. Asegúrate de habilitar el escalado fraccionario en Mutter:\n%s').format(applyError.message)
-                            );
-                            return;
+                            try {
+                                conn2.call_finish(res2);
+                                this._syncDisplayScale();
+                            } catch (err2) {
+                                console.error(`[QuickScale] Error aplicando configuración de pantalla: ${err2.message}`);
+                                Main.notify(
+                                    'Quick Scale Switcher',
+                                    _('Error aplicando escala. Asegúrate de habilitar el escalado fraccionario en Mutter:\n%s').format(err2.message)
+                                );
+                            }
                         }
-                        this._syncDisplayScale();
-                    }
-                );
-            } catch (err) {
-                console.error(`[QuickScale] Error preparando ApplyMonitorsConfig: ${err.message}`);
+                    );
+                } catch (err) {
+                    console.error(`[QuickScale] Error preparando ApplyMonitorsConfig: ${err.message}`);
+                }
             }
-        });
+        );
     }
 
     destroy() {
@@ -396,11 +405,10 @@ class QuickScaleIndicator extends PanelMenu.Button {
             this._openStateId = null;
         }
 
-        if (this._monitorsChangedId && this._proxy) {
-            this._proxy.disconnectSignal(this._monitorsChangedId);
+        if (this._monitorsChangedId) {
+            Gio.DBus.session.signal_unsubscribe(this._monitorsChangedId);
             this._monitorsChangedId = null;
         }
-        this._proxy = null;
 
         if (this._fontSettingChangedId && this._interfaceSettings) {
             this._interfaceSettings.disconnect(this._fontSettingChangedId);
@@ -417,14 +425,11 @@ class QuickScaleIndicator extends PanelMenu.Button {
 
 export default class QuickScaleExtension extends Extension {
     enable() {
-        console.log(`[QuickScale] Habilitando extensión: ${this.uuid}`);
         this._indicator = new QuickScaleIndicator(this);
         Main.panel.addToStatusArea(this.uuid, this._indicator, 1, 'right');
-        console.log(`[QuickScale] Extensión agregada al panel superior con éxito`);
     }
 
     disable() {
-        console.log(`[QuickScale] Deshabilitando extensión: ${this.uuid}`);
         if (this._indicator) {
             this._indicator.destroy();
             this._indicator = null;
