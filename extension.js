@@ -2,12 +2,13 @@ import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 
-// D-Bus XML specification for Mutter DisplayConfig
+// Especificación XML de D-Bus para Mutter DisplayConfig
 const MutterDisplayConfigXml = `
 <node>
   <interface name="org.gnome.Mutter.DisplayConfig">
@@ -29,17 +30,17 @@ const MutterDisplayConfigXml = `
 
 const DisplayConfigProxy = Gio.DBusProxy.makeProxyWrapper(MutterDisplayConfigXml);
 
-// Display scaling options (Mutter fractional scaling values)
+// Opciones de escala de pantalla (valores fraccionarios de Mutter)
 const DISPLAY_SCALES = [
     { label: '100% (1.00)', target: 1.0 },
     { label: '125% (1.25)', target: 1.25 },
-    { label: '133% (1.33)', target: 4 / 3 }, // Mutter uses 1.3333333730697632
+    { label: '133% (1.33)', target: 4 / 3 }, // Mutter usa 1.3333333730697632
     { label: '150% (1.50)', target: 1.5 },
-    { label: '166% (1.66)', target: 5 / 3 }, // Mutter uses 1.6666666269302368
+    { label: '166% (1.66)', target: 5 / 3 }, // Mutter usa 1.6666666269302368
     { label: '200% (2.00)', target: 2.0 },
 ];
 
-// Font scaling options (org.gnome.desktop.interface text-scaling-factor)
+// Opciones de escala de fuentes (org.gnome.desktop.interface text-scaling-factor)
 const FONT_SCALES = [
     { label: '0.66', value: 0.66 },
     { label: '1.00 (Normal)', value: 1.0 },
@@ -50,7 +51,7 @@ const FONT_SCALES = [
     { label: '2.00', value: 2.00 },
 ];
 
-// Method 2 corresponds to META_MONITORS_CONFIG_METHOD_PERSISTENT
+// Método 2 = META_MONITORS_CONFIG_METHOD_PERSISTENT
 const METHOD_PERSISTENT = 2;
 
 const QuickScaleIndicator = GObject.registerClass(
@@ -66,12 +67,23 @@ class QuickScaleIndicator extends PanelMenu.Button {
         this._fontSettingChangedId = null;
         this._openStateId = null;
 
+        // Contenedor principal con estilo nativo de panel
+        const box = new St.BoxLayout({
+            style_class: 'panel-status-indicators-box',
+            reactive: true,
+            can_focus: true,
+            track_hover: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+
         // Icono en la barra superior (Top Bar)
         const icon = new St.Icon({
             icon_name: 'preferences-desktop-display-symbolic',
             style_class: 'system-status-icon quick-scale-panel-icon',
+            y_align: Clutter.ActorAlign.CENTER,
         });
-        this.add_child(icon);
+        box.add_child(icon);
+        this.add_child(box);
 
         // Inicializar configuraciones GSettings de fuentes
         try {
@@ -107,7 +119,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
     _buildMenu() {
         // --- Sección 1: Escala de Pantalla (Display Scaling) ---
         const displaySectionHeader = new PopupMenu.PopupSeparatorMenuItem(_('Escala de pantalla'));
-        displaySectionHeader.actor.add_style_class_name('quick-scale-header');
+        displaySectionHeader.add_style_class_name('quick-scale-header');
         this.menu.addMenuItem(displaySectionHeader);
 
         for (const scaleOpt of DISPLAY_SCALES) {
@@ -119,7 +131,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
 
         // --- Sección 2: Escala de Fuentes (Text Scaling Factor) ---
         const fontSectionHeader = new PopupMenu.PopupSeparatorMenuItem(_('Escala de fuentes'));
-        fontSectionHeader.actor.add_style_class_name('quick-scale-header');
+        fontSectionHeader.add_style_class_name('quick-scale-header');
         this.menu.addMenuItem(fontSectionHeader);
 
         for (const fontOpt of FONT_SCALES) {
@@ -405,11 +417,14 @@ class QuickScaleIndicator extends PanelMenu.Button {
 
 export default class QuickScaleExtension extends Extension {
     enable() {
+        console.log(`[QuickScale] Habilitando extensión: ${this.uuid}`);
         this._indicator = new QuickScaleIndicator(this);
         Main.panel.addToStatusArea(this.uuid, this._indicator, 1, 'right');
+        console.log(`[QuickScale] Extensión agregada al panel superior con éxito`);
     }
 
     disable() {
+        console.log(`[QuickScale] Deshabilitando extensión: ${this.uuid}`);
         if (this._indicator) {
             this._indicator.destroy();
             this._indicator = null;

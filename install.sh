@@ -101,22 +101,26 @@ fi
 # d) Habilitación de la extensión
 # ------------------------------------------------------------------------------
 echo -e "\n${BOLD}[4/4] Habilitando extensión en GNOME Shell...${NC}"
+
+# 1. Asegurar registro permanente en GSettings (persiste entre reinicios e inicios de sesión)
+SHELL_SCHEMA="org.gnome.shell"
+CURRENT_ENABLED=$(gsettings get ${SHELL_SCHEMA} enabled-extensions 2>/dev/null || echo "[]")
+if [[ "${CURRENT_ENABLED}" != *"${UUID}"* ]]; then
+    if [[ "${CURRENT_ENABLED}" == "@as []" || "${CURRENT_ENABLED}" == "[]" ]]; then
+        gsettings set ${SHELL_SCHEMA} enabled-extensions "['${UUID}']"
+    else
+        UPDATED_ENABLED=$(echo "${CURRENT_ENABLED}" | sed "s/]$/, '${UUID}']/")
+        gsettings set ${SHELL_SCHEMA} enabled-extensions "${UPDATED_ENABLED}"
+    fi
+    echo -e "  ${GREEN}✓ UUID registrado en GSettings (org.gnome.shell.enabled-extensions).${NC}"
+else
+    echo -e "  ${GREEN}✓ UUID ya registrado en org.gnome.shell.enabled-extensions.${NC}"
+fi
+
+# 2. Habilitar en caliente en la sesión en ejecución
 if command -v gnome-extensions >/dev/null 2>&1; then
     gnome-extensions enable "${UUID}" 2>/dev/null || true
     echo -e "  ${GREEN}✓ Comando 'gnome-extensions enable ${UUID}' ejecutado.${NC}"
-else
-    # Fallback directo vía GSettings
-    SHELL_SCHEMA="org.gnome.shell"
-    CURRENT_ENABLED=$(gsettings get ${SHELL_SCHEMA} enabled-extensions 2>/dev/null || echo "[]")
-    if [[ "${CURRENT_ENABLED}" != *"${UUID}"* ]]; then
-        if [[ "${CURRENT_ENABLED}" == "@as []" || "${CURRENT_ENABLED}" == "[]" ]]; then
-            gsettings set ${SHELL_SCHEMA} enabled-extensions "['${UUID}']"
-        else
-            UPDATED_ENABLED=$(echo "${CURRENT_ENABLED}" | sed "s/]$/, '${UUID}']/")
-            gsettings set ${SHELL_SCHEMA} enabled-extensions "${UPDATED_ENABLED}"
-        fi
-    fi
-    echo -e "  ${GREEN}✓ UUID registrado en org.gnome.shell.enabled-extensions.${NC}"
 fi
 
 # ------------------------------------------------------------------------------
