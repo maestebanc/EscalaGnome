@@ -1,0 +1,16 @@
+{
+  "uuid": "quick-scale-switcher@local",
+  "name": "Quick Scale & Font Switcher",
+  "description": "Menú en el panel superior para cambiar con un clic la escala de pantalla (fraccionaria con Mutter D-Bus) y el tamaño de fuentes en GNOME Shell y Wayland.",
+  "shell-version": [
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "50",
+    "51"
+  ],
+  "url": "https://github.com/maec/EscalaGnome",
+  "version": 1
+}

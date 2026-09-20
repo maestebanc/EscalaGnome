@@ -1,0 +1,22 @@
+/* Quick Scale & Font Switcher - Adwaita Theme Stylesheet */
+
+.quick-scale-panel-icon {
+    icon-size: 16px;
+    margin: 0 2px;
+}
+
+/* Encabezados de sección dentro del PopupMenu */
+.quick-scale-header {
+    font-weight: bold;
+    font-size: 0.82em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding-top: 6px;
+    padding-bottom: 2px;
+    color: rgba(128, 128, 128, 0.85);
+}
+
+/* Efecto hover suave y espaciado consistente */
+.popup-menu-item.quick-scale-header:hover {
+    background-color: transparent;
+}
