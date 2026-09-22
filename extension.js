@@ -307,9 +307,9 @@ class QuickScaleIndicator extends PanelMenu.Button {
 
         // Botón de reinicio rápido [↺ 1x] en la 4ª posición de la Fila 2
         const resetBox = new St.BoxLayout({
+            style_class: 'quick-scale-reset-box',
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
-            spacing: 3,
         });
         const resetIcon = new St.Icon({
             icon_name: 'edit-undo-symbolic',

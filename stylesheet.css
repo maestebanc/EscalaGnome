@@ -90,6 +90,10 @@
 }
 
 /* Botón de reinicio rápido (↺ 1x) */
+.quick-scale-reset-box {
+    spacing: 3px;
+}
+
 .quick-scale-reset-btn {
     font-weight: 600;
     color: rgba(255, 255, 255, 0.8);
