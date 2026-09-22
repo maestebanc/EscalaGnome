@@ -117,10 +117,12 @@ else
     echo -e "  ${GREEN}✓ UUID ya registrado en org.gnome.shell.enabled-extensions.${NC}"
 fi
 
-# 2. Habilitar en caliente en la sesión en ejecución
+# 2. Habilitar o recargar en caliente en la sesión en ejecución
 if command -v gnome-extensions >/dev/null 2>&1; then
+    gnome-extensions disable "${UUID}" 2>/dev/null || true
+    sleep 0.3
     gnome-extensions enable "${UUID}" 2>/dev/null || true
-    echo -e "  ${GREEN}✓ Comando 'gnome-extensions enable ${UUID}' ejecutado.${NC}"
+    echo -e "  ${GREEN}✓ Extensión recargada y habilitada con gnome-extensions.${NC}"
 fi
 
 # ------------------------------------------------------------------------------
