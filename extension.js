@@ -6,7 +6,6 @@ import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import * as Slider from 'resource:///org/gnome/shell/ui/slider.js';
 import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 // Constantes D-Bus de Mutter DisplayConfig
@@ -14,20 +13,20 @@ const MUTTER_BUS_NAME = 'org.gnome.Mutter.DisplayConfig';
 const MUTTER_OBJECT_PATH = '/org/gnome/Mutter/DisplayConfig';
 const MUTTER_INTERFACE = 'org.gnome.Mutter.DisplayConfig';
 
-// Pasos discretos de escala de pantalla
+// Opciones de escala de pantalla
 const DISPLAY_SCALES = [
-    { label: '100% (1.00)', target: 1.0 },
-    { label: '125% (1.25)', target: 1.25 },
-    { label: '133% (1.33)', target: 4 / 3 }, // Mutter: 1.3333333730697632
-    { label: '150% (1.50)', target: 1.5 },
-    { label: '166% (1.66)', target: 5 / 3 }, // Mutter: 1.6666666269302368
-    { label: '200% (2.00)', target: 2.0 },
+    { label: '100%', target: 1.0 },
+    { label: '125%', target: 1.25 },
+    { label: '133%', target: 4 / 3 }, // Mutter: 1.3333333730697632
+    { label: '150%', target: 1.5 },
+    { label: '166%', target: 5 / 3 }, // Mutter: 1.6666666269302368
+    { label: '200%', target: 2.0 },
 ];
 
-// Pasos discretos de escala de fuentes
+// Opciones de escala de fuentes
 const FONT_SCALES = [
     { label: '0.66', value: 0.66 },
-    { label: '1.00 (Normal)', value: 1.0 },
+    { label: '1.00', value: 1.0 },
     { label: '1.25', value: 1.25 },
     { label: '1.33', value: 1.33 },
     { label: '1.50', value: 1.50 },
@@ -75,13 +74,8 @@ class QuickScaleIndicator extends PanelMenu.Button {
         this._destroyed = false;
         this._safeMode = loadSafeMode();
 
-        // Índices activos y flags de bloqueo para sincronización de sliders
-        this._displayCurrentIndex = 0;
-        this._fontCurrentIndex = 1;
-        this._blockDisplaySliderSignal = false;
-        this._blockFontSliderSignal = false;
-        this._displayScaleTimeoutId = null;
-        this._fontScaleTimeoutId = null;
+        this._displayButtons = [];
+        this._fontButtons = [];
 
         this._monitorsChangedId = null;
         this._fontSettingChangedId = null;
@@ -113,7 +107,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
             this._interfaceSettings = null;
         }
 
-        // Construir interfaz rediseñada con deslizadores y botones paso a paso
+        // Construir interfaz (Propuesta A: Cuadrícula segmentada compacta)
         this._buildMenu();
 
         // Conectar señales D-Bus y GSettings
@@ -126,11 +120,11 @@ class QuickScaleIndicator extends PanelMenu.Button {
 
     _buildMenu() {
         // =========================================================================
-        // SECCIÓN 1: Deslizador de Escala de Pantalla
+        // SECCIÓN 1: Cuadrícula de Escala de Pantalla (3 columnas x 2 filas)
         // =========================================================================
         const displaySection = new PopupMenu.PopupMenuSection();
 
-        // Fila 1: Encabezado con Icono, Título y Badge con valor actual
+        // Encabezado: Icono, Título y Badge con valor activo
         const displayHeaderItem = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -163,82 +157,70 @@ class QuickScaleIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
         });
         displayHeaderBox.add_child(this._displayBadge);
-
         displayHeaderItem.add_child(displayHeaderBox);
         displaySection.addMenuItem(displayHeaderItem);
 
-        // Fila 2: Controles [-] Deslizador [+]
-        const displaySliderItem = new PopupMenu.PopupBaseMenuItem({
+        // Cuadrícula de botones de escala de pantalla
+        const displayGridItem = new PopupMenu.PopupBaseMenuItem({
             activate: false,
             can_focus: false,
-            style_class: 'quick-scale-slider-item',
+            reactive: true,
+            style_class: 'quick-scale-grid-item',
         });
-        const displaySliderBox = new St.BoxLayout({
+        const displayGridBox = new St.BoxLayout({
+            vertical: true,
             x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: 'quick-scale-slider-box',
+            style_class: 'quick-scale-grid-container',
         });
 
-        const displayMinusBtn = new St.Button({
-            style_class: 'button quick-scale-step-button',
-            child: new St.Icon({
-                icon_name: 'zoom-out-symbolic',
-                style_class: 'popup-menu-icon',
-            }),
-            y_align: Clutter.ActorAlign.CENTER,
-            can_focus: true,
+        // Fila 1: 100%, 125%, 133%
+        const displayRow1 = new St.BoxLayout({
+            x_expand: true,
+            style_class: 'quick-scale-row',
         });
-        displayMinusBtn.connect('clicked', () => this._stepDisplayScale(-1));
-        displaySliderBox.add_child(displayMinusBtn);
-
-        this._displaySlider = new Slider.Slider(0);
-        this._displaySlider.x_expand = true;
-        this._displaySlider.y_align = Clutter.ActorAlign.CENTER;
-        for (let i = 0; i < DISPLAY_SCALES.length; i++) {
-            this._displaySlider.addMark(i / (DISPLAY_SCALES.length - 1));
-        }
-
-        this._displaySlider.connect('notify::value', () => {
-            if (this._blockDisplaySliderSignal) return;
-            const stepIndex = Math.round(this._displaySlider.value * (DISPLAY_SCALES.length - 1));
-            this._displayBadge.text = DISPLAY_SCALES[stepIndex].label;
-            this._displayCurrentIndex = stepIndex;
-            this._scheduleApplyDisplayScale(stepIndex);
+        // Fila 2: 150%, 166%, 200%
+        const displayRow2 = new St.BoxLayout({
+            x_expand: true,
+            style_class: 'quick-scale-row',
         });
 
-        this._displaySlider.connect('drag-end', () => {
-            if (this._blockDisplaySliderSignal) return;
-            const stepIndex = Math.round(this._displaySlider.value * (DISPLAY_SCALES.length - 1));
-            this._blockDisplaySliderSignal = true;
-            this._displaySlider.value = stepIndex / (DISPLAY_SCALES.length - 1);
-            this._blockDisplaySliderSignal = false;
-            this._applyDisplayScaleNow(stepIndex);
+        this._displayButtons = [];
+        DISPLAY_SCALES.forEach((scale, index) => {
+            const btn = new St.Button({
+                label: scale.label,
+                style_class: 'button quick-scale-btn',
+                can_focus: true,
+                x_expand: true,
+                track_hover: true,
+            });
+            if (btn.child) {
+                btn.child.x_align = Clutter.ActorAlign.CENTER;
+                btn.child.y_align = Clutter.ActorAlign.CENTER;
+            }
+            btn.connect('clicked', () => {
+                this._onDisplayScaleSelected(scale);
+            });
+            this._displayButtons.push(btn);
+
+            if (index < 3) {
+                displayRow1.add_child(btn);
+            } else {
+                displayRow2.add_child(btn);
+            }
         });
 
-        displaySliderBox.add_child(this._displaySlider);
-
-        const displayPlusBtn = new St.Button({
-            style_class: 'button quick-scale-step-button',
-            child: new St.Icon({
-                icon_name: 'zoom-in-symbolic',
-                style_class: 'popup-menu-icon',
-            }),
-            y_align: Clutter.ActorAlign.CENTER,
-            can_focus: true,
-        });
-        displayPlusBtn.connect('clicked', () => this._stepDisplayScale(1));
-        displaySliderBox.add_child(displayPlusBtn);
-
-        displaySliderItem.add_child(displaySliderBox);
-        displaySection.addMenuItem(displaySliderItem);
+        displayGridBox.add_child(displayRow1);
+        displayGridBox.add_child(displayRow2);
+        displayGridItem.add_child(displayGridBox);
+        displaySection.addMenuItem(displayGridItem);
         this.menu.addMenuItem(displaySection);
 
         // =========================================================================
-        // SECCIÓN 2: Deslizador de Escala de Fuentes
+        // SECCIÓN 2: Cuadrícula de Escala de Fuentes (4 columnas x 2 filas + Reset)
         // =========================================================================
         const fontSection = new PopupMenu.PopupMenuSection();
 
-        // Fila 1: Encabezado con Icono, Título y Badge de fuentes
+        // Encabezado: Icono, Título y Badge
         const fontHeaderItem = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -271,78 +253,99 @@ class QuickScaleIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
         });
         fontHeaderBox.add_child(this._fontBadge);
-
         fontHeaderItem.add_child(fontHeaderBox);
         fontSection.addMenuItem(fontHeaderItem);
 
-        // Fila 2: Controles [a-] Deslizador [A+]
-        const fontSliderItem = new PopupMenu.PopupBaseMenuItem({
+        // Cuadrícula de fuentes
+        const fontGridItem = new PopupMenu.PopupBaseMenuItem({
             activate: false,
             can_focus: false,
-            style_class: 'quick-scale-slider-item',
+            reactive: true,
+            style_class: 'quick-scale-grid-item',
         });
-        const fontSliderBox = new St.BoxLayout({
+        const fontGridBox = new St.BoxLayout({
+            vertical: true,
             x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: 'quick-scale-slider-box',
+            style_class: 'quick-scale-grid-container',
         });
 
-        const fontMinusBtn = new St.Button({
-            style_class: 'button quick-scale-step-button',
-            child: new St.Icon({
-                icon_name: 'format-text-smaller-symbolic',
-                style_class: 'popup-menu-icon',
-            }),
+        // Fila 1: 0.66, 1.00, 1.25, 1.33
+        const fontRow1 = new St.BoxLayout({
+            x_expand: true,
+            style_class: 'quick-scale-row',
+        });
+        // Fila 2: 1.50, 1.66, 2.00, [↺ 1x]
+        const fontRow2 = new St.BoxLayout({
+            x_expand: true,
+            style_class: 'quick-scale-row',
+        });
+
+        this._fontButtons = [];
+        FONT_SCALES.forEach((scale, index) => {
+            const btn = new St.Button({
+                label: scale.label,
+                style_class: 'button quick-scale-btn',
+                can_focus: true,
+                x_expand: true,
+                track_hover: true,
+            });
+            if (btn.child) {
+                btn.child.x_align = Clutter.ActorAlign.CENTER;
+                btn.child.y_align = Clutter.ActorAlign.CENTER;
+            }
+            btn.connect('clicked', () => {
+                this._onFontScaleSelected(scale.value);
+            });
+            this._fontButtons.push(btn);
+
+            if (index < 4) {
+                fontRow1.add_child(btn);
+            } else {
+                fontRow2.add_child(btn);
+            }
+        });
+
+        // Botón de reinicio rápido [↺ 1x] en la 4ª posición de la Fila 2
+        const resetBox = new St.BoxLayout({
+            x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
+            spacing: 3,
+        });
+        const resetIcon = new St.Icon({
+            icon_name: 'edit-undo-symbolic',
+            style_class: 'popup-menu-icon',
+            icon_size: 11,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        const resetLabel = new St.Label({
+            text: '1x',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        resetBox.add_child(resetIcon);
+        resetBox.add_child(resetLabel);
+
+        const resetBtn = new St.Button({
+            child: resetBox,
+            style_class: 'button quick-scale-btn quick-scale-reset-btn',
             can_focus: true,
+            x_expand: true,
+            track_hover: true,
         });
-        fontMinusBtn.connect('clicked', () => this._stepFontScale(-1));
-        fontSliderBox.add_child(fontMinusBtn);
-
-        this._fontSlider = new Slider.Slider(0);
-        this._fontSlider.x_expand = true;
-        this._fontSlider.y_align = Clutter.ActorAlign.CENTER;
-        for (let i = 0; i < FONT_SCALES.length; i++) {
-            this._fontSlider.addMark(i / (FONT_SCALES.length - 1));
-        }
-
-        this._fontSlider.connect('notify::value', () => {
-            if (this._blockFontSliderSignal) return;
-            const stepIndex = Math.round(this._fontSlider.value * (FONT_SCALES.length - 1));
-            this._fontBadge.text = FONT_SCALES[stepIndex].label;
-            this._fontCurrentIndex = stepIndex;
-            this._scheduleApplyFontScale(stepIndex);
+        resetBtn.connect('clicked', () => {
+            this._onFontScaleSelected(1.0);
+            const defaultDisplay = DISPLAY_SCALES.find(s => s.target === 1.0) || DISPLAY_SCALES[0];
+            this._onDisplayScaleSelected(defaultDisplay);
         });
+        fontRow2.add_child(resetBtn);
 
-        this._fontSlider.connect('drag-end', () => {
-            if (this._blockFontSliderSignal) return;
-            const stepIndex = Math.round(this._fontSlider.value * (FONT_SCALES.length - 1));
-            this._blockFontSliderSignal = true;
-            this._fontSlider.value = stepIndex / (FONT_SCALES.length - 1);
-            this._blockFontSliderSignal = false;
-            this._applyFontScaleNow(stepIndex);
-        });
-
-        fontSliderBox.add_child(this._fontSlider);
-
-        const fontPlusBtn = new St.Button({
-            style_class: 'button quick-scale-step-button',
-            child: new St.Icon({
-                icon_name: 'format-text-larger-symbolic',
-                style_class: 'popup-menu-icon',
-            }),
-            y_align: Clutter.ActorAlign.CENTER,
-            can_focus: true,
-        });
-        fontPlusBtn.connect('clicked', () => this._stepFontScale(1));
-        fontSliderBox.add_child(fontPlusBtn);
-
-        fontSliderItem.add_child(fontSliderBox);
-        fontSection.addMenuItem(fontSliderItem);
+        fontGridBox.add_child(fontRow1);
+        fontGridBox.add_child(fontRow2);
+        fontGridItem.add_child(fontGridBox);
+        fontSection.addMenuItem(fontGridItem);
         this.menu.addMenuItem(fontSection);
 
         // =========================================================================
-        // SECCIÓN 3: Separador y Acciones Rápidas
+        // SECCIÓN 3: Separador, Modo Seguro y Configuración
         // =========================================================================
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
@@ -370,18 +373,6 @@ class QuickScaleIndicator extends PanelMenu.Button {
         });
         this.menu.addMenuItem(safeModeItem);
 
-        // Botón Restablecer valores predeterminados (100% y 1.00)
-        const resetItem = new PopupMenu.PopupImageMenuItem(
-            _('Restablecer valores por defecto (100% / 1.00)'),
-            'edit-undo-symbolic'
-        );
-        resetItem.connect('activate', () => {
-            this._onFontScaleSelected(1.0);
-            const defaultDisplay = DISPLAY_SCALES.find(s => s.target === 1.0) || DISPLAY_SCALES[0];
-            this._onDisplayScaleSelected(defaultDisplay);
-        });
-        this.menu.addMenuItem(resetItem);
-
         // Acceso directo a Configuración de Pantalla de GNOME
         const settingsItem = new PopupMenu.PopupImageMenuItem(
             _('Configuración de pantalla…'),
@@ -400,72 +391,6 @@ class QuickScaleIndicator extends PanelMenu.Button {
             }
         });
         this.menu.addMenuItem(settingsItem);
-    }
-
-    _stepDisplayScale(delta) {
-        const newIndex = Math.clamp(this._displayCurrentIndex + delta, 0, DISPLAY_SCALES.length - 1);
-        if (newIndex === this._displayCurrentIndex) return;
-
-        this._displayCurrentIndex = newIndex;
-        this._blockDisplaySliderSignal = true;
-        this._displaySlider.value = newIndex / (DISPLAY_SCALES.length - 1);
-        this._blockDisplaySliderSignal = false;
-
-        this._displayBadge.text = DISPLAY_SCALES[newIndex].label;
-        this._applyDisplayScaleNow(newIndex);
-    }
-
-    _scheduleApplyDisplayScale(stepIndex) {
-        if (this._displayScaleTimeoutId) {
-            GLib.source_remove(this._displayScaleTimeoutId);
-            this._displayScaleTimeoutId = null;
-        }
-        this._displayScaleTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
-            this._displayScaleTimeoutId = null;
-            this._applyDisplayScaleNow(stepIndex);
-            return GLib.SOURCE_REMOVE;
-        });
-    }
-
-    _applyDisplayScaleNow(stepIndex) {
-        if (this._displayScaleTimeoutId) {
-            GLib.source_remove(this._displayScaleTimeoutId);
-            this._displayScaleTimeoutId = null;
-        }
-        this._onDisplayScaleSelected(DISPLAY_SCALES[stepIndex]);
-    }
-
-    _stepFontScale(delta) {
-        const newIndex = Math.clamp(this._fontCurrentIndex + delta, 0, FONT_SCALES.length - 1);
-        if (newIndex === this._fontCurrentIndex) return;
-
-        this._fontCurrentIndex = newIndex;
-        this._blockFontSliderSignal = true;
-        this._fontSlider.value = newIndex / (FONT_SCALES.length - 1);
-        this._blockFontSliderSignal = false;
-
-        this._fontBadge.text = FONT_SCALES[newIndex].label;
-        this._applyFontScaleNow(newIndex);
-    }
-
-    _scheduleApplyFontScale(stepIndex) {
-        if (this._fontScaleTimeoutId) {
-            GLib.source_remove(this._fontScaleTimeoutId);
-            this._fontScaleTimeoutId = null;
-        }
-        this._fontScaleTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
-            this._fontScaleTimeoutId = null;
-            this._applyFontScaleNow(stepIndex);
-            return GLib.SOURCE_REMOVE;
-        });
-    }
-
-    _applyFontScaleNow(stepIndex) {
-        if (this._fontScaleTimeoutId) {
-            GLib.source_remove(this._fontScaleTimeoutId);
-            this._fontScaleTimeoutId = null;
-        }
-        this._onFontScaleSelected(FONT_SCALES[stepIndex].value);
     }
 
     _connectSignals() {
@@ -526,16 +451,17 @@ class QuickScaleIndicator extends PanelMenu.Button {
                 }
             }
 
-            this._fontCurrentIndex = closestIndex;
             if (this._fontBadge) {
                 this._fontBadge.text = FONT_SCALES[closestIndex].label;
             }
 
-            if (this._fontSlider) {
-                this._blockFontSliderSignal = true;
-                this._fontSlider.value = closestIndex / (FONT_SCALES.length - 1);
-                this._blockFontSliderSignal = false;
-            }
+            this._fontButtons.forEach((btn, idx) => {
+                if (idx === closestIndex) {
+                    btn.add_style_class_name('quick-scale-btn-active');
+                } else {
+                    btn.remove_style_class_name('quick-scale-btn-active');
+                }
+            });
         } catch (err) {
             console.error(`[QuickScale] Error al leer text-scaling-factor: ${err.message}`);
         }
@@ -543,6 +469,20 @@ class QuickScaleIndicator extends PanelMenu.Button {
 
     _onFontScaleSelected(scaleValue) {
         if (!this._interfaceSettings || this._destroyed) return;
+
+        const targetIndex = FONT_SCALES.findIndex(s => s.value === scaleValue);
+        if (targetIndex >= 0) {
+            if (this._fontBadge) {
+                this._fontBadge.text = FONT_SCALES[targetIndex].label;
+            }
+            this._fontButtons.forEach((btn, idx) => {
+                if (idx === targetIndex) {
+                    btn.add_style_class_name('quick-scale-btn-active');
+                } else {
+                    btn.remove_style_class_name('quick-scale-btn-active');
+                }
+            });
+        }
 
         try {
             this._interfaceSettings.set_double('text-scaling-factor', scaleValue);
@@ -586,16 +526,17 @@ class QuickScaleIndicator extends PanelMenu.Button {
                         }
                     }
 
-                    this._displayCurrentIndex = closestIndex;
                     if (this._displayBadge) {
                         this._displayBadge.text = DISPLAY_SCALES[closestIndex].label;
                     }
 
-                    if (this._displaySlider) {
-                        this._blockDisplaySliderSignal = true;
-                        this._displaySlider.value = closestIndex / (DISPLAY_SCALES.length - 1);
-                        this._blockDisplaySliderSignal = false;
-                    }
+                    this._displayButtons.forEach((btn, idx) => {
+                        if (idx === closestIndex) {
+                            btn.add_style_class_name('quick-scale-btn-active');
+                        } else {
+                            btn.remove_style_class_name('quick-scale-btn-active');
+                        }
+                    });
                 } catch (err) {
                     console.error(`[QuickScale] Error en GetCurrentState: ${err.message}`);
                 }
@@ -605,6 +546,20 @@ class QuickScaleIndicator extends PanelMenu.Button {
 
     _onDisplayScaleSelected(scaleOption) {
         if (this._destroyed) return;
+
+        const targetIndex = DISPLAY_SCALES.findIndex(s => s === scaleOption || s.target === scaleOption.target);
+        if (targetIndex >= 0) {
+            if (this._displayBadge) {
+                this._displayBadge.text = DISPLAY_SCALES[targetIndex].label;
+            }
+            this._displayButtons.forEach((btn, idx) => {
+                if (idx === targetIndex) {
+                    btn.add_style_class_name('quick-scale-btn-active');
+                } else {
+                    btn.remove_style_class_name('quick-scale-btn-active');
+                }
+            });
+        }
 
         Gio.DBus.session.call(
             MUTTER_BUS_NAME,
@@ -625,8 +580,8 @@ class QuickScaleIndicator extends PanelMenu.Button {
                     if (!logicalMonitors || logicalMonitors.length === 0) return;
 
                     const primaryIndex = logicalMonitors.findIndex(lm => lm[4] === true);
-                    const targetIndex = primaryIndex >= 0 ? primaryIndex : 0;
-                    const primaryLm = logicalMonitors[targetIndex];
+                    const tIndex = primaryIndex >= 0 ? primaryIndex : 0;
+                    const primaryLm = logicalMonitors[tIndex];
                     const primaryConnector = primaryLm[5]?.[0]?.[0];
 
                     // Buscar el modo actual del monitor principal para obtener resolución y supported_scales
@@ -682,7 +637,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                     // Reconstruir la configuración de monitores lógicos preservando resolución nativa y refresco
                     const newLogicalMonitors = logicalMonitors.map((lm, idx) => {
                         const [x, y, scale, transform, isPrimary, lmMonitors] = lm;
-                        const isTarget = idx === targetIndex;
+                        const isTarget = idx === tIndex;
 
                         let newX = x;
                         let newY = y;
@@ -770,16 +725,6 @@ class QuickScaleIndicator extends PanelMenu.Button {
     destroy() {
         this._destroyed = true;
 
-        if (this._displayScaleTimeoutId) {
-            GLib.source_remove(this._displayScaleTimeoutId);
-            this._displayScaleTimeoutId = null;
-        }
-
-        if (this._fontScaleTimeoutId) {
-            GLib.source_remove(this._fontScaleTimeoutId);
-            this._fontScaleTimeoutId = null;
-        }
-
         if (this._openStateId) {
             this.menu.disconnect(this._openStateId);
             this._openStateId = null;
@@ -795,6 +740,9 @@ class QuickScaleIndicator extends PanelMenu.Button {
             this._fontSettingChangedId = null;
         }
         this._interfaceSettings = null;
+
+        this._displayButtons = [];
+        this._fontButtons = [];
 
         super.destroy();
     }
