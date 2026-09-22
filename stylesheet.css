@@ -1,22 +1,74 @@
-/* Quick Scale & Font Switcher - Adwaita Theme Stylesheet */
+/* Quick Scale & Font Switcher - Proposal C (Sliders & Steppers) */
 
 .quick-scale-panel-icon {
     icon-size: 16px;
     margin: 0 2px;
 }
 
-/* Encabezados de sección dentro del PopupMenu */
-.quick-scale-header {
-    font-weight: bold;
-    font-size: 0.82em;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    padding-top: 6px;
-    padding-bottom: 2px;
-    color: rgba(128, 128, 128, 0.85);
+/* Fila de encabezado con icono, título y badge */
+.quick-scale-header-item {
+    padding: 6px 12px 2px 12px;
 }
 
-/* Efecto hover suave y espaciado consistente */
-.popup-menu-item.quick-scale-header:hover {
-    background-color: transparent;
+.quick-scale-header-box {
+    spacing: 8px;
+}
+
+.quick-scale-header-icon {
+    icon-size: 16px;
+    margin-right: 6px;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.quick-scale-header-title {
+    font-weight: 600;
+    font-size: 0.9em;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* Badge con valor numérico activo */
+.quick-scale-badge {
+    font-weight: bold;
+    font-size: 0.82em;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    background-color: rgba(53, 132, 228, 0.22);
+    color: #78aeed;
+}
+
+/* Fila de control con deslizador y botones +/- */
+.quick-scale-slider-item {
+    padding: 2px 8px 10px 8px;
+}
+
+.quick-scale-slider-box {
+    spacing: 8px;
+}
+
+/* Botones circulares de paso a paso */
+.quick-scale-step-button {
+    border-radius: 9999px;
+    padding: 4px;
+    min-width: 28px;
+    min-height: 28px;
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.quick-scale-step-button:hover {
+    background-color: rgba(255, 255, 255, 0.16);
+}
+
+.quick-scale-step-button:active {
+    background-color: #3584e4;
+    color: #ffffff;
+}
+
+.quick-scale-step-button StIcon {
+    icon-size: 14px;
+}
+
+/* Deslizador con espaciado adecuado */
+.quick-scale-slider-box .slider {
+    margin: 0 6px;
+    min-width: 140px;
 }

@@ -6,6 +6,7 @@ import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as Slider from 'resource:///org/gnome/shell/ui/slider.js';
 import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 // Constantes D-Bus de Mutter DisplayConfig
@@ -13,17 +14,17 @@ const MUTTER_BUS_NAME = 'org.gnome.Mutter.DisplayConfig';
 const MUTTER_OBJECT_PATH = '/org/gnome/Mutter/DisplayConfig';
 const MUTTER_INTERFACE = 'org.gnome.Mutter.DisplayConfig';
 
-// Opciones de escala de pantalla (valores fraccionarios de Mutter)
+// Pasos discretos de escala de pantalla
 const DISPLAY_SCALES = [
     { label: '100% (1.00)', target: 1.0 },
     { label: '125% (1.25)', target: 1.25 },
-    { label: '133% (1.33)', target: 4 / 3 }, // Mutter usa 1.3333333730697632
+    { label: '133% (1.33)', target: 4 / 3 }, // Mutter: 1.3333333730697632
     { label: '150% (1.50)', target: 1.5 },
-    { label: '166% (1.66)', target: 5 / 3 }, // Mutter usa 1.6666666269302368
+    { label: '166% (1.66)', target: 5 / 3 }, // Mutter: 1.6666666269302368
     { label: '200% (2.00)', target: 2.0 },
 ];
 
-// Opciones de escala de fuentes (org.gnome.desktop.interface text-scaling-factor)
+// Pasos discretos de escala de fuentes
 const FONT_SCALES = [
     { label: '0.66', value: 0.66 },
     { label: '1.00 (Normal)', value: 1.0 },
@@ -44,8 +45,14 @@ class QuickScaleIndicator extends PanelMenu.Button {
         this._extension = extension;
         this._destroyed = false;
 
-        this._displayMenuItems = [];
-        this._fontMenuItems = [];
+        // Índices activos y flags de bloqueo para sincronización de sliders
+        this._displayCurrentIndex = 0;
+        this._fontCurrentIndex = 1;
+        this._blockDisplaySliderSignal = false;
+        this._blockFontSliderSignal = false;
+        this._displayScaleTimeoutId = null;
+        this._fontScaleTimeoutId = null;
+
         this._monitorsChangedId = null;
         this._fontSettingChangedId = null;
         this._openStateId = null;
@@ -68,7 +75,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
         box.add_child(icon);
         this.add_child(box);
 
-        // Inicializar GSettings de fuentes (en memoria, instantáneo)
+        // Inicializar GSettings de fuentes
         try {
             this._interfaceSettings = new Gio.Settings({ schema_id: 'org.gnome.desktop.interface' });
         } catch (e) {
@@ -76,47 +83,256 @@ class QuickScaleIndicator extends PanelMenu.Button {
             this._interfaceSettings = null;
         }
 
-        // Construir interfaz del menú desplegable
+        // Construir interfaz rediseñada con deslizadores y botones paso a paso
         this._buildMenu();
 
-        // Conectar eventos y señales de forma 100% asíncrona sin proxies bloqueantes
+        // Conectar señales D-Bus y GSettings
         this._connectSignals();
 
-        // Sincronizar fuentes de forma inmediata
+        // Cargar estado inicial
         this._syncFontScale();
-
-        // Sincronización inicial asíncrona no bloqueante
         this._syncDisplayScale();
     }
 
     _buildMenu() {
-        // --- Sección 1: Escala de Pantalla (Display Scaling) ---
-        const displaySectionHeader = new PopupMenu.PopupSeparatorMenuItem(_('Escala de pantalla'));
-        displaySectionHeader.add_style_class_name('quick-scale-header');
-        this.menu.addMenuItem(displaySectionHeader);
+        // =========================================================================
+        // SECCIÓN 1: Deslizador de Escala de Pantalla
+        // =========================================================================
+        const displaySection = new PopupMenu.PopupMenuSection();
 
-        for (const scaleOpt of DISPLAY_SCALES) {
-            const item = new PopupMenu.PopupMenuItem(scaleOpt.label);
-            item.connect('activate', () => this._onDisplayScaleSelected(scaleOpt));
-            this.menu.addMenuItem(item);
-            this._displayMenuItems.push({ item, target: scaleOpt.target });
+        // Fila 1: Encabezado con Icono, Título y Badge con valor actual
+        const displayHeaderItem = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
+            style_class: 'quick-scale-header-item',
+        });
+        const displayHeaderBox = new St.BoxLayout({
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'quick-scale-header-box',
+        });
+
+        const displayIcon = new St.Icon({
+            icon_name: 'video-display-symbolic',
+            style_class: 'popup-menu-icon quick-scale-header-icon',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        displayHeaderBox.add_child(displayIcon);
+
+        const displayTitle = new St.Label({
+            text: _('Escala de pantalla'),
+            style_class: 'quick-scale-header-title',
+            y_align: Clutter.ActorAlign.CENTER,
+            x_expand: true,
+        });
+        displayHeaderBox.add_child(displayTitle);
+
+        this._displayBadge = new St.Label({
+            text: DISPLAY_SCALES[0].label,
+            style_class: 'quick-scale-badge',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        displayHeaderBox.add_child(this._displayBadge);
+
+        displayHeaderItem.add_child(displayHeaderBox);
+        displaySection.addMenuItem(displayHeaderItem);
+
+        // Fila 2: Controles [-] Deslizador [+]
+        const displaySliderItem = new PopupMenu.PopupBaseMenuItem({
+            activate: false,
+            can_focus: false,
+            style_class: 'quick-scale-slider-item',
+        });
+        const displaySliderBox = new St.BoxLayout({
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'quick-scale-slider-box',
+        });
+
+        const displayMinusBtn = new St.Button({
+            style_class: 'button quick-scale-step-button',
+            child: new St.Icon({
+                icon_name: 'zoom-out-symbolic',
+                style_class: 'popup-menu-icon',
+            }),
+            y_align: Clutter.ActorAlign.CENTER,
+            can_focus: true,
+        });
+        displayMinusBtn.connect('clicked', () => this._stepDisplayScale(-1));
+        displaySliderBox.add_child(displayMinusBtn);
+
+        this._displaySlider = new Slider.Slider(0);
+        this._displaySlider.x_expand = true;
+        this._displaySlider.y_align = Clutter.ActorAlign.CENTER;
+        for (let i = 0; i < DISPLAY_SCALES.length; i++) {
+            this._displaySlider.addMark(i / (DISPLAY_SCALES.length - 1));
         }
 
-        // --- Sección 2: Escala de Fuentes (Text Scaling Factor) ---
-        const fontSectionHeader = new PopupMenu.PopupSeparatorMenuItem(_('Escala de fuentes'));
-        fontSectionHeader.add_style_class_name('quick-scale-header');
-        this.menu.addMenuItem(fontSectionHeader);
+        this._displaySlider.connect('notify::value', () => {
+            if (this._blockDisplaySliderSignal) return;
+            const stepIndex = Math.round(this._displaySlider.value * (DISPLAY_SCALES.length - 1));
+            this._displayBadge.text = DISPLAY_SCALES[stepIndex].label;
+            this._displayCurrentIndex = stepIndex;
+            this._scheduleApplyDisplayScale(stepIndex);
+        });
 
-        for (const fontOpt of FONT_SCALES) {
-            const item = new PopupMenu.PopupMenuItem(fontOpt.label);
-            item.connect('activate', () => this._onFontScaleSelected(fontOpt.value));
-            this.menu.addMenuItem(item);
-            this._fontMenuItems.push({ item, value: fontOpt.value });
+        this._displaySlider.connect('drag-end', () => {
+            if (this._blockDisplaySliderSignal) return;
+            const stepIndex = Math.round(this._displaySlider.value * (DISPLAY_SCALES.length - 1));
+            this._blockDisplaySliderSignal = true;
+            this._displaySlider.value = stepIndex / (DISPLAY_SCALES.length - 1);
+            this._blockDisplaySliderSignal = false;
+            this._applyDisplayScaleNow(stepIndex);
+        });
+
+        displaySliderBox.add_child(this._displaySlider);
+
+        const displayPlusBtn = new St.Button({
+            style_class: 'button quick-scale-step-button',
+            child: new St.Icon({
+                icon_name: 'zoom-in-symbolic',
+                style_class: 'popup-menu-icon',
+            }),
+            y_align: Clutter.ActorAlign.CENTER,
+            can_focus: true,
+        });
+        displayPlusBtn.connect('clicked', () => this._stepDisplayScale(1));
+        displaySliderBox.add_child(displayPlusBtn);
+
+        displaySliderItem.add_child(displaySliderBox);
+        displaySection.addMenuItem(displaySliderItem);
+        this.menu.addMenuItem(displaySection);
+
+        // =========================================================================
+        // SECCIÓN 2: Deslizador de Escala de Fuentes
+        // =========================================================================
+        const fontSection = new PopupMenu.PopupMenuSection();
+
+        // Fila 1: Encabezado con Icono, Título y Badge de fuentes
+        const fontHeaderItem = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
+            style_class: 'quick-scale-header-item',
+        });
+        const fontHeaderBox = new St.BoxLayout({
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'quick-scale-header-box',
+        });
+
+        const fontIcon = new St.Icon({
+            icon_name: 'format-text-larger-symbolic',
+            style_class: 'popup-menu-icon quick-scale-header-icon',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        fontHeaderBox.add_child(fontIcon);
+
+        const fontTitle = new St.Label({
+            text: _('Escala de fuentes'),
+            style_class: 'quick-scale-header-title',
+            y_align: Clutter.ActorAlign.CENTER,
+            x_expand: true,
+        });
+        fontHeaderBox.add_child(fontTitle);
+
+        this._fontBadge = new St.Label({
+            text: FONT_SCALES[1].label,
+            style_class: 'quick-scale-badge',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        fontHeaderBox.add_child(this._fontBadge);
+
+        fontHeaderItem.add_child(fontHeaderBox);
+        fontSection.addMenuItem(fontHeaderItem);
+
+        // Fila 2: Controles [a-] Deslizador [A+]
+        const fontSliderItem = new PopupMenu.PopupBaseMenuItem({
+            activate: false,
+            can_focus: false,
+            style_class: 'quick-scale-slider-item',
+        });
+        const fontSliderBox = new St.BoxLayout({
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'quick-scale-slider-box',
+        });
+
+        const fontMinusBtn = new St.Button({
+            style_class: 'button quick-scale-step-button',
+            child: new St.Icon({
+                icon_name: 'format-text-smaller-symbolic',
+                style_class: 'popup-menu-icon',
+            }),
+            y_align: Clutter.ActorAlign.CENTER,
+            can_focus: true,
+        });
+        fontMinusBtn.connect('clicked', () => this._stepFontScale(-1));
+        fontSliderBox.add_child(fontMinusBtn);
+
+        this._fontSlider = new Slider.Slider(0);
+        this._fontSlider.x_expand = true;
+        this._fontSlider.y_align = Clutter.ActorAlign.CENTER;
+        for (let i = 0; i < FONT_SCALES.length; i++) {
+            this._fontSlider.addMark(i / (FONT_SCALES.length - 1));
         }
 
-        // --- Separador y acceso a Configuración de Pantalla de GNOME ---
+        this._fontSlider.connect('notify::value', () => {
+            if (this._blockFontSliderSignal) return;
+            const stepIndex = Math.round(this._fontSlider.value * (FONT_SCALES.length - 1));
+            this._fontBadge.text = FONT_SCALES[stepIndex].label;
+            this._fontCurrentIndex = stepIndex;
+            this._scheduleApplyFontScale(stepIndex);
+        });
+
+        this._fontSlider.connect('drag-end', () => {
+            if (this._blockFontSliderSignal) return;
+            const stepIndex = Math.round(this._fontSlider.value * (FONT_SCALES.length - 1));
+            this._blockFontSliderSignal = true;
+            this._fontSlider.value = stepIndex / (FONT_SCALES.length - 1);
+            this._blockFontSliderSignal = false;
+            this._applyFontScaleNow(stepIndex);
+        });
+
+        fontSliderBox.add_child(this._fontSlider);
+
+        const fontPlusBtn = new St.Button({
+            style_class: 'button quick-scale-step-button',
+            child: new St.Icon({
+                icon_name: 'format-text-larger-symbolic',
+                style_class: 'popup-menu-icon',
+            }),
+            y_align: Clutter.ActorAlign.CENTER,
+            can_focus: true,
+        });
+        fontPlusBtn.connect('clicked', () => this._stepFontScale(1));
+        fontSliderBox.add_child(fontPlusBtn);
+
+        fontSliderItem.add_child(fontSliderBox);
+        fontSection.addMenuItem(fontSliderItem);
+        this.menu.addMenuItem(fontSection);
+
+        // =========================================================================
+        // SECCIÓN 3: Separador y Acciones Rápidas
+        // =========================================================================
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const settingsItem = new PopupMenu.PopupMenuItem(_('Configuración de pantalla…'));
+
+        // Botón Restablecer valores predeterminados (100% y 1.00)
+        const resetItem = new PopupMenu.PopupImageMenuItem(
+            _('Restablecer valores por defecto (100% / 1.00)'),
+            'edit-undo-symbolic'
+        );
+        resetItem.connect('activate', () => {
+            this._onFontScaleSelected(1.0);
+            const defaultDisplay = DISPLAY_SCALES.find(s => s.target === 1.0) || DISPLAY_SCALES[0];
+            this._onDisplayScaleSelected(defaultDisplay);
+        });
+        this.menu.addMenuItem(resetItem);
+
+        // Acceso directo a Configuración de Pantalla de GNOME
+        const settingsItem = new PopupMenu.PopupImageMenuItem(
+            _('Configuración de pantalla…'),
+            'preferences-system-symbolic'
+        );
         settingsItem.connect('activate', () => {
             try {
                 const app = Gio.AppInfo.create_from_commandline(
@@ -132,6 +348,72 @@ class QuickScaleIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(settingsItem);
     }
 
+    _stepDisplayScale(delta) {
+        const newIndex = Math.clamp(this._displayCurrentIndex + delta, 0, DISPLAY_SCALES.length - 1);
+        if (newIndex === this._displayCurrentIndex) return;
+
+        this._displayCurrentIndex = newIndex;
+        this._blockDisplaySliderSignal = true;
+        this._displaySlider.value = newIndex / (DISPLAY_SCALES.length - 1);
+        this._blockDisplaySliderSignal = false;
+
+        this._displayBadge.text = DISPLAY_SCALES[newIndex].label;
+        this._applyDisplayScaleNow(newIndex);
+    }
+
+    _scheduleApplyDisplayScale(stepIndex) {
+        if (this._displayScaleTimeoutId) {
+            GLib.source_remove(this._displayScaleTimeoutId);
+            this._displayScaleTimeoutId = null;
+        }
+        this._displayScaleTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+            this._displayScaleTimeoutId = null;
+            this._applyDisplayScaleNow(stepIndex);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _applyDisplayScaleNow(stepIndex) {
+        if (this._displayScaleTimeoutId) {
+            GLib.source_remove(this._displayScaleTimeoutId);
+            this._displayScaleTimeoutId = null;
+        }
+        this._onDisplayScaleSelected(DISPLAY_SCALES[stepIndex]);
+    }
+
+    _stepFontScale(delta) {
+        const newIndex = Math.clamp(this._fontCurrentIndex + delta, 0, FONT_SCALES.length - 1);
+        if (newIndex === this._fontCurrentIndex) return;
+
+        this._fontCurrentIndex = newIndex;
+        this._blockFontSliderSignal = true;
+        this._fontSlider.value = newIndex / (FONT_SCALES.length - 1);
+        this._blockFontSliderSignal = false;
+
+        this._fontBadge.text = FONT_SCALES[newIndex].label;
+        this._applyFontScaleNow(newIndex);
+    }
+
+    _scheduleApplyFontScale(stepIndex) {
+        if (this._fontScaleTimeoutId) {
+            GLib.source_remove(this._fontScaleTimeoutId);
+            this._fontScaleTimeoutId = null;
+        }
+        this._fontScaleTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+            this._fontScaleTimeoutId = null;
+            this._applyFontScaleNow(stepIndex);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _applyFontScaleNow(stepIndex) {
+        if (this._fontScaleTimeoutId) {
+            GLib.source_remove(this._fontScaleTimeoutId);
+            this._fontScaleTimeoutId = null;
+        }
+        this._onFontScaleSelected(FONT_SCALES[stepIndex].value);
+    }
+
     _connectSignals() {
         // Sincronizar bajo demanda al abrir el menú (0 coste de CPU en reposo)
         this._openStateId = this.menu.connect('open-state-changed', (menu, isOpen) => {
@@ -141,7 +423,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
             }
         });
 
-        // Suscripción de señal D-Bus de Mutter totalmente asíncrona (sin GInitable / sin introspección)
+        // Suscripción de señal D-Bus de Mutter totalmente asíncrona
         try {
             this._monitorsChangedId = Gio.DBus.session.signal_subscribe(
                 MUTTER_BUS_NAME,
@@ -179,9 +461,26 @@ class QuickScaleIndicator extends PanelMenu.Button {
 
         try {
             const currentFontScale = this._interfaceSettings.get_double('text-scaling-factor');
-            for (const { item, value } of this._fontMenuItems) {
-                const isActive = Math.abs(currentFontScale - value) < 0.02;
-                item.setOrnament(isActive ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
+
+            let closestIndex = 0;
+            let minDiff = Infinity;
+            for (let i = 0; i < FONT_SCALES.length; i++) {
+                const diff = Math.abs(currentFontScale - FONT_SCALES[i].value);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestIndex = i;
+                }
+            }
+
+            this._fontCurrentIndex = closestIndex;
+            if (this._fontBadge) {
+                this._fontBadge.text = FONT_SCALES[closestIndex].label;
+            }
+
+            if (this._fontSlider) {
+                this._blockFontSliderSignal = true;
+                this._fontSlider.value = closestIndex / (FONT_SCALES.length - 1);
+                this._blockFontSliderSignal = false;
             }
         } catch (err) {
             console.error(`[QuickScale] Error al leer text-scaling-factor: ${err.message}`);
@@ -202,7 +501,6 @@ class QuickScaleIndicator extends PanelMenu.Button {
     _syncDisplayScale() {
         if (this._destroyed) return;
 
-        // Llamada D-Bus nativa directa 100% asíncrona: nunca bloquea el bucle principal de GNOME Shell
         Gio.DBus.session.call(
             MUTTER_BUS_NAME,
             MUTTER_OBJECT_PATH,
@@ -224,9 +522,25 @@ class QuickScaleIndicator extends PanelMenu.Button {
                     const primaryLm = logicalMonitors.find(lm => lm[4] === true) || logicalMonitors[0];
                     const currentScale = primaryLm[2];
 
-                    for (const { item, target } of this._displayMenuItems) {
-                        const isActive = Math.abs(currentScale - target) < 0.04;
-                        item.setOrnament(isActive ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
+                    let closestIndex = 0;
+                    let minDiff = Infinity;
+                    for (let i = 0; i < DISPLAY_SCALES.length; i++) {
+                        const diff = Math.abs(currentScale - DISPLAY_SCALES[i].target);
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            closestIndex = i;
+                        }
+                    }
+
+                    this._displayCurrentIndex = closestIndex;
+                    if (this._displayBadge) {
+                        this._displayBadge.text = DISPLAY_SCALES[closestIndex].label;
+                    }
+
+                    if (this._displaySlider) {
+                        this._blockDisplaySliderSignal = true;
+                        this._displaySlider.value = closestIndex / (DISPLAY_SCALES.length - 1);
+                        this._blockDisplaySliderSignal = false;
                     }
                 } catch (err) {
                     console.error(`[QuickScale] Error en GetCurrentState: ${err.message}`);
@@ -276,7 +590,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                         }
                     }
 
-                    // Ajustar al valor exacto soportado por Mutter (por ej. 1.3333333730697632 o 1.6666666269302368)
+                    // Ajustar al valor exacto soportado por Mutter
                     let exactScale = scaleOption.target;
                     if (primaryCurrentMode && Array.isArray(primaryCurrentMode[5])) {
                         const supported = primaryCurrentMode[5].map(s => (s?.deepUnpack ? s.deepUnpack() : s));
@@ -359,7 +673,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                         return [newX, newY, newScale, transform, isPrimary, newLmMonitors];
                     });
 
-                    // Aplicar de forma persistente en Mutter mediante llamada D-Bus asíncrona
+                    // Aplicar de forma persistente en Mutter
                     Gio.DBus.session.call(
                         MUTTER_BUS_NAME,
                         MUTTER_OBJECT_PATH,
@@ -400,6 +714,16 @@ class QuickScaleIndicator extends PanelMenu.Button {
     destroy() {
         this._destroyed = true;
 
+        if (this._displayScaleTimeoutId) {
+            GLib.source_remove(this._displayScaleTimeoutId);
+            this._displayScaleTimeoutId = null;
+        }
+
+        if (this._fontScaleTimeoutId) {
+            GLib.source_remove(this._fontScaleTimeoutId);
+            this._fontScaleTimeoutId = null;
+        }
+
         if (this._openStateId) {
             this.menu.disconnect(this._openStateId);
             this._openStateId = null;
@@ -415,9 +739,6 @@ class QuickScaleIndicator extends PanelMenu.Button {
             this._fontSettingChangedId = null;
         }
         this._interfaceSettings = null;
-
-        this._displayMenuItems = [];
-        this._fontMenuItems = [];
 
         super.destroy();
     }
