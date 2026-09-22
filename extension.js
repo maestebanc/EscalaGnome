@@ -35,8 +35,37 @@ const FONT_SCALES = [
     { label: '2.00', value: 2.00 },
 ];
 
-// Método 2 = META_MONITORS_CONFIG_METHOD_PERSISTENT
-const METHOD_PERSISTENT = 2;
+// Métodos de configuración de monitores de Mutter
+const METHOD_TEMPORARY = 1;  // Desencadena DisplayChangeDialog de GNOME con cuenta atrás de 20s
+const METHOD_PERSISTENT = 2; // Aplica de forma inmediata y persistente sin diálogos de confirmación
+
+// Directorio y archivo para persistir preferencias locales
+const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'quick-scale-switcher']);
+const CONFIG_FILE = GLib.build_filenamev([CONFIG_DIR, 'config.json']);
+
+function loadSafeMode() {
+    try {
+        if (GLib.file_test(CONFIG_FILE, GLib.FileTest.EXISTS)) {
+            const [ok, contents] = GLib.file_get_contents(CONFIG_FILE);
+            if (ok) {
+                const data = JSON.parse(new TextDecoder().decode(contents));
+                return !!data.safeMode;
+            }
+        }
+    } catch (e) {
+        console.error(`[QuickScale] Error al cargar configuración: ${e.message}`);
+    }
+    return false;
+}
+
+function saveSafeMode(val) {
+    try {
+        GLib.mkdir_with_parents(CONFIG_DIR, 0o755);
+        GLib.file_set_contents(CONFIG_FILE, JSON.stringify({ safeMode: val }));
+    } catch (e) {
+        console.error(`[QuickScale] Error al guardar configuración: ${e.message}`);
+    }
+}
 
 const QuickScaleIndicator = GObject.registerClass(
 class QuickScaleIndicator extends PanelMenu.Button {
@@ -44,6 +73,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
         super._init(0.0, 'Quick Scale & Font Switcher', false);
         this._extension = extension;
         this._destroyed = false;
+        this._safeMode = loadSafeMode();
 
         // Índices activos y flags de bloqueo para sincronización de sliders
         this._displayCurrentIndex = 0;
@@ -316,6 +346,30 @@ class QuickScaleIndicator extends PanelMenu.Button {
         // =========================================================================
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+        // Interruptor Modo seguro / Confirmación en 20s
+        const safeModeItem = new PopupMenu.PopupSwitchMenuItem(
+            _('Confirmar cambios de pantalla (20s)'),
+            this._safeMode
+        );
+
+        const safeIcon = new St.Icon({
+            icon_name: 'security-high-symbolic',
+            style_class: 'popup-menu-icon',
+            x_align: Clutter.ActorAlign.END,
+        });
+        safeModeItem.insert_child_below(safeIcon, safeModeItem.label);
+
+        // Permitir alternar el interruptor sin cerrar el menú desplegable
+        safeModeItem.activate = function (_event) {
+            this.toggle();
+        };
+
+        safeModeItem.connect('toggled', (item, state) => {
+            this._safeMode = state;
+            saveSafeMode(state);
+        });
+        this.menu.addMenuItem(safeModeItem);
+
         // Botón Restablecer valores predeterminados (100% y 1.00)
         const resetItem = new PopupMenu.PopupImageMenuItem(
             _('Restablecer valores por defecto (100% / 1.00)'),
@@ -433,7 +487,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                 null,
                 Gio.DBusSignalFlags.NONE,
                 () => {
-                    if (!this._destroyed && this.menu.isOpen) {
+                    if (!this._destroyed) {
                         this._syncDisplayScale();
                     }
                 }
@@ -673,7 +727,9 @@ class QuickScaleIndicator extends PanelMenu.Button {
                         return [newX, newY, newScale, transform, isPrimary, newLmMonitors];
                     });
 
-                    // Aplicar de forma persistente en Mutter
+                    const method = this._safeMode ? METHOD_TEMPORARY : METHOD_PERSISTENT;
+
+                    // Aplicar en Mutter según el modo seleccionado (persistente o con diálogo de 20s)
                     Gio.DBus.session.call(
                         MUTTER_BUS_NAME,
                         MUTTER_OBJECT_PATH,
@@ -681,7 +737,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                         'ApplyMonitorsConfig',
                         new GLib.Variant('(uua(iiduba(ssa{sv}))a{sv})', [
                             serial,
-                            METHOD_PERSISTENT,
+                            method,
                             newLogicalMonitors,
                             {}
                         ]),
