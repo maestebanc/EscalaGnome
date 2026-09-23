@@ -34,9 +34,11 @@ const FONT_SCALES = [
     { label: '2.00', value: 2.00 },
 ];
 
-// Métodos de configuración de monitores de Mutter
-const METHOD_TEMPORARY = 1;  // Desencadena DisplayChangeDialog de GNOME con cuenta atrás de 20s
-const METHOD_PERSISTENT = 2; // Aplica de forma inmediata y persistente sin diálogos de confirmación
+// Métodos de configuración de monitores de Mutter en ApplyMonitorsConfig
+// Método 1 (TEMPORARY): Aplica el cambio de forma directa e instantánea sin diálogo modal
+// Método 2 (PERSISTENT): Desencadena en GNOME Shell el diálogo nativo de confirmación (20s)
+const METHOD_INSTANT = 1;
+const METHOD_CONFIRM_20S = 2;
 
 // Directorio y archivo para persistir preferencias locales
 const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'quick-scale-switcher']);
@@ -682,9 +684,9 @@ class QuickScaleIndicator extends PanelMenu.Button {
                         return [newX, newY, newScale, transform, isPrimary, newLmMonitors];
                     });
 
-                    const method = this._safeMode ? METHOD_TEMPORARY : METHOD_PERSISTENT;
+                    const method = this._safeMode ? METHOD_CONFIRM_20S : METHOD_INSTANT;
 
-                    // Aplicar en Mutter según el modo seleccionado (persistente o con diálogo de 20s)
+                    // Aplicar en Mutter según el modo seleccionado (instantáneo o con confirmación de 20s)
                     Gio.DBus.session.call(
                         MUTTER_BUS_NAME,
                         MUTTER_OBJECT_PATH,
