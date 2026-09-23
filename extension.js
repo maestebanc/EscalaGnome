@@ -146,7 +146,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
         displayHeaderBox.add_child(displayIcon);
 
         const displayTitle = new St.Label({
-            text: _('Escala de pantalla'),
+            text: _('Display scale'),
             style_class: 'quick-scale-header-title',
             y_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
@@ -242,7 +242,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
         fontHeaderBox.add_child(fontIcon);
 
         const fontTitle = new St.Label({
-            text: _('Escala de fuentes'),
+            text: _('Font scale'),
             style_class: 'quick-scale-header-title',
             y_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
@@ -332,6 +332,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
             can_focus: true,
             x_expand: true,
             track_hover: true,
+            accessible_name: _('Reset to defaults (100% / 1.00)'),
         });
         resetBtn.connect('clicked', () => {
             this._onFontScaleSelected(1.0);
@@ -353,7 +354,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
 
         // Interruptor Modo seguro / Confirmación en 20s
         const safeModeItem = new PopupMenu.PopupSwitchMenuItem(
-            _('Confirmar cambios de pantalla (20s)'),
+            _('Confirm display changes (20s)'),
             this._safeMode
         );
 
@@ -377,7 +378,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
 
         // Acceso directo a Configuración de Pantalla de GNOME
         const settingsItem = new PopupMenu.PopupImageMenuItem(
-            _('Configuración de pantalla…'),
+            _('Display Settings…'),
             'preferences-system-symbolic'
         );
         settingsItem.connect('activate', () => {
@@ -490,7 +491,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
             this._interfaceSettings.set_double('text-scaling-factor', scaleValue);
         } catch (err) {
             console.error(`[QuickScale] Error al escribir text-scaling-factor: ${err.message}`);
-            Main.notify('Quick Scale Switcher', _('Error ajustando escala de fuentes: %s').format(err.message));
+            Main.notify('Quick Scale Switcher', _('Error setting font scale: %s').format(err.message));
         }
     }
 
@@ -712,7 +713,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                                 console.error(`[QuickScale] Error aplicando configuración de pantalla: ${err2.message}`);
                                 Main.notify(
                                     'Quick Scale Switcher',
-                                    _('Error aplicando escala. Asegúrate de habilitar el escalado fraccionario en Mutter:\n%s').format(err2.message)
+                                    _('Error applying display scale. Make sure fractional scaling is enabled in Mutter:\n%s').format(err2.message)
                                 );
                             }
                         }
