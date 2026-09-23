@@ -50,9 +50,9 @@ Extensión ultracompacta y moderna para **GNOME Shell** (compatible con **GNOME 
 
 ---
 
-## 📦 Instalación para Usuarios / Amigos
+## 📦 Instalación
 
-### Método 1: Desde GitHub Releases (Recomendado, sin terminal casi)
+### Método 1: Desde GitHub Releases (Recomendado)
 1. Descarga el paquete `quick-scale-switcher@local.shell-extension.zip` desde la sección de [Releases de GitHub](https://github.com/maestebanc/EscalaGnome/releases).
 2. Abre un terminal en la carpeta donde descargaste el archivo y ejecuta:
    ```bash
