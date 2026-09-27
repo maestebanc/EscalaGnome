@@ -47,7 +47,8 @@ An ultra-compact, native GNOME Shell extension that provides a top panel menu to
 * **Internationalization (i18n):**
   - Adapts automatically to your system locale.
   - Built-in support for **English** and **Spanish** (`es`).
-  - English is the default fallback for all other languages.
+* **Adaptive Light & Dark Themes:**
+  - Fully dynamic Adwaita styling that automatically adapts contrast, text, and button states to both light and dark system appearances, supporting native accent colors.
 * **High Performance Mutter D-Bus Integration:**
   - Fully asynchronous D-Bus communication (`org.gnome.Mutter.DisplayConfig`), operating with 1–2 ms latency and 0% CPU consumption when idle.
   - Automatic precision alignment with Mutter's exact supported scales (e.g. `1.33333337` or `1.66666663`).
