@@ -94,7 +94,13 @@ class QuickScaleIndicator extends PanelMenu.Button {
 
         // Icono en la barra superior (Top Bar)
         const icon = new St.Icon({
-            icon_name: 'preferences-desktop-display-symbolic',
+            gicon: new Gio.ThemedIcon({
+                names: [
+                    'preferences-desktop-display-symbolic',
+                    'video-display-symbolic',
+                    'display-symbolic',
+                ],
+            }),
             style_class: 'system-status-icon quick-scale-panel-icon',
             y_align: Clutter.ActorAlign.CENTER,
         });
@@ -139,7 +145,13 @@ class QuickScaleIndicator extends PanelMenu.Button {
         });
 
         const displayIcon = new St.Icon({
-            icon_name: 'video-display-symbolic',
+            gicon: new Gio.ThemedIcon({
+                names: [
+                    'video-display-symbolic',
+                    'preferences-desktop-display-symbolic',
+                    'display-symbolic',
+                ],
+            }),
             style_class: 'popup-menu-icon quick-scale-header-icon',
             y_align: Clutter.ActorAlign.CENTER,
         });
@@ -235,7 +247,14 @@ class QuickScaleIndicator extends PanelMenu.Button {
         });
 
         const fontIcon = new St.Icon({
-            icon_name: 'format-text-larger-symbolic',
+            gicon: new Gio.ThemedIcon({
+                names: [
+                    'format-text-larger-symbolic',
+                    'font-size-symbolic',
+                    'preferences-desktop-font-symbolic',
+                    'font-x-generic-symbolic',
+                ],
+            }),
             style_class: 'popup-menu-icon quick-scale-header-icon',
             y_align: Clutter.ActorAlign.CENTER,
         });
@@ -314,9 +333,14 @@ class QuickScaleIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
         });
         const resetIcon = new St.Icon({
-            icon_name: 'edit-undo-symbolic',
-            style_class: 'popup-menu-icon',
-            icon_size: 11,
+            gicon: new Gio.ThemedIcon({
+                names: [
+                    'view-refresh-symbolic',
+                    'edit-undo-symbolic',
+                    'document-revert-symbolic',
+                ],
+            }),
+            style_class: 'popup-menu-icon quick-scale-reset-icon',
             y_align: Clutter.ActorAlign.CENTER,
         });
         const resetLabel = new St.Label({
@@ -359,9 +383,16 @@ class QuickScaleIndicator extends PanelMenu.Button {
         );
 
         const safeIcon = new St.Icon({
-            icon_name: 'security-high-symbolic',
-            style_class: 'popup-menu-icon',
-            x_align: Clutter.ActorAlign.END,
+            gicon: new Gio.ThemedIcon({
+                names: [
+                    'security-high-symbolic',
+                    'channel-secure-symbolic',
+                    'dialog-password-symbolic',
+                    'preferences-system-privacy-symbolic',
+                ],
+            }),
+            style_class: 'popup-menu-icon quick-scale-safe-icon',
+            y_align: Clutter.ActorAlign.CENTER,
         });
         safeModeItem.insert_child_below(safeIcon, safeModeItem.label);
 
@@ -377,9 +408,16 @@ class QuickScaleIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(safeModeItem);
 
         // Acceso directo a Configuración de Pantalla de GNOME
+        const settingsGIcon = new Gio.ThemedIcon({
+            names: [
+                'preferences-desktop-display-symbolic',
+                'video-display-symbolic',
+                'preferences-system-symbolic',
+            ],
+        });
         const settingsItem = new PopupMenu.PopupImageMenuItem(
             _('Display Settings…'),
-            'preferences-system-symbolic'
+            settingsGIcon
         );
         settingsItem.connect('activate', () => {
             try {
