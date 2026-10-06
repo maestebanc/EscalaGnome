@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Quick Scale & Font Switcher 1.0.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-23 17:59+0200\n"
+"POT-Creation-Date: 2026-10-06 22:59+0200\n"
 "PO-Revision-Date: 2026-09-23 18:00+0200\n"
 "Last-Translator: maestebanc <https://github.com/maestebanc/EscalaGnome>\n"
 "Language-Team: Spanish\n"
@@ -16,32 +16,32 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: extension.js:149
+#: extension.js:163
 msgid "Display scale"
 msgstr "Escala de pantalla"
 
-#: extension.js:245
+#: extension.js:266
 msgid "Font scale"
 msgstr "Escala de fuentes"
 
-#: extension.js:335
+#: extension.js:361
 msgid "Reset to defaults (100% / 1.00)"
 msgstr "Restablecer valores por defecto (100% / 1.00)"
 
-#: extension.js:357
+#: extension.js:383
 msgid "Confirm display changes (20s)"
 msgstr "Confirmar cambios de pantalla (20s)"
 
-#: extension.js:381
+#: extension.js:421
 msgid "Display Settings…"
 msgstr "Configuración de pantalla…"
 
-#: extension.js:494
+#: extension.js:534
 #, javascript-format
 msgid "Error setting font scale: %s"
 msgstr "Error ajustando escala de fuentes: %s"
 
-#: extension.js:716
+#: extension.js:756
 #, javascript-format
 msgid ""
 "Error applying display scale. Make sure fractional scaling is enabled in "

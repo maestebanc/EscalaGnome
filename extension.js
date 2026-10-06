@@ -6,7 +6,9 @@ import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
+import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
+
+const { gettext: _ } = Extension.defineTranslationFunctions(import.meta.url);
 
 // Constantes D-Bus de Mutter DisplayConfig
 const MUTTER_BUS_NAME = 'org.gnome.Mutter.DisplayConfig';
@@ -54,7 +56,7 @@ function loadSafeMode() {
             }
         }
     } catch (e) {
-        console.error(`[QuickScale] Error al cargar configuración: ${e.message}`);
+        console.error(`[QuickScale] Failed to load configuration: ${e.message}`);
     }
     return false;
 }
@@ -64,7 +66,7 @@ function saveSafeMode(val) {
         GLib.mkdir_with_parents(CONFIG_DIR, 0o755);
         GLib.file_set_contents(CONFIG_FILE, JSON.stringify({ safeMode: val }));
     } catch (e) {
-        console.error(`[QuickScale] Error al guardar configuración: ${e.message}`);
+        console.error(`[QuickScale] Failed to save configuration: ${e.message}`);
     }
 }
 
@@ -111,7 +113,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
         try {
             this._interfaceSettings = new Gio.Settings({ schema_id: 'org.gnome.desktop.interface' });
         } catch (e) {
-            console.error(`[QuickScale] Error conectando con org.gnome.desktop.interface: ${e.message}`);
+            console.error(`[QuickScale] Failed to connect to org.gnome.desktop.interface: ${e.message}`);
             this._interfaceSettings = null;
         }
 
@@ -428,7 +430,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                 );
                 app.launch([], null);
             } catch (err) {
-                console.error(`[QuickScale] Error abriendo gnome-control-center: ${err.message}`);
+                console.error(`[QuickScale] Failed to open gnome-control-center: ${err.message}`);
             }
         });
         this.menu.addMenuItem(settingsItem);
@@ -459,7 +461,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                 }
             );
         } catch (e) {
-            console.error(`[QuickScale] Error suscribiendo a MonitorsChanged: ${e.message}`);
+            console.error(`[QuickScale] Failed to subscribe to MonitorsChanged: ${e.message}`);
             this._monitorsChangedId = null;
         }
 
@@ -504,7 +506,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                 }
             });
         } catch (err) {
-            console.error(`[QuickScale] Error al leer text-scaling-factor: ${err.message}`);
+            console.error(`[QuickScale] Failed to read text-scaling-factor: ${err.message}`);
         }
     }
 
@@ -528,7 +530,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
         try {
             this._interfaceSettings.set_double('text-scaling-factor', scaleValue);
         } catch (err) {
-            console.error(`[QuickScale] Error al escribir text-scaling-factor: ${err.message}`);
+            console.error(`[QuickScale] Failed to write text-scaling-factor: ${err.message}`);
             Main.notify('Quick Scale Switcher', _('Error setting font scale: %s').format(err.message));
         }
     }
@@ -579,7 +581,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                         }
                     });
                 } catch (err) {
-                    console.error(`[QuickScale] Error en GetCurrentState: ${err.message}`);
+                    console.error(`[QuickScale] Failed to get display state: ${err.message}`);
                 }
             }
         );
@@ -748,7 +750,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                                 conn2.call_finish(res2);
                                 this._syncDisplayScale();
                             } catch (err2) {
-                                console.error(`[QuickScale] Error aplicando configuración de pantalla: ${err2.message}`);
+                                console.error(`[QuickScale] Failed to apply display configuration: ${err2.message}`);
                                 Main.notify(
                                     'Quick Scale Switcher',
                                     _('Error applying display scale. Make sure fractional scaling is enabled in Mutter:\n%s').format(err2.message)
@@ -757,7 +759,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                         }
                     );
                 } catch (err) {
-                    console.error(`[QuickScale] Error preparando ApplyMonitorsConfig: ${err.message}`);
+                    console.error(`[QuickScale] Failed to prepare ApplyMonitorsConfig: ${err.message}`);
                 }
             }
         );
