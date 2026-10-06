@@ -10,12 +10,12 @@ import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const { gettext: _ } = Extension.defineTranslationFunctions(import.meta.url);
 
-// Constantes D-Bus de Mutter DisplayConfig
+// Mutter DisplayConfig D-Bus constants
 const MUTTER_BUS_NAME = 'org.gnome.Mutter.DisplayConfig';
 const MUTTER_OBJECT_PATH = '/org/gnome/Mutter/DisplayConfig';
 const MUTTER_INTERFACE = 'org.gnome.Mutter.DisplayConfig';
 
-// Opciones de escala de pantalla
+// Display scale options
 const DISPLAY_SCALES = [
     { label: '100%', target: 1.0 },
     { label: '125%', target: 1.25 },
@@ -25,7 +25,7 @@ const DISPLAY_SCALES = [
     { label: '200%', target: 2.0 },
 ];
 
-// Opciones de escala de fuentes
+// Font scale options
 const FONT_SCALES = [
     { label: '0.66', value: 0.66 },
     { label: '1.00', value: 1.0 },
@@ -36,13 +36,13 @@ const FONT_SCALES = [
     { label: '2.00', value: 2.00 },
 ];
 
-// Métodos de configuración de monitores de Mutter en ApplyMonitorsConfig
-// Método 1 (TEMPORARY): Aplica el cambio de forma directa e instantánea sin diálogo modal
-// Método 2 (PERSISTENT): Desencadena en GNOME Shell el diálogo nativo de confirmación (20s)
+// Mutter monitor configuration methods for ApplyMonitorsConfig
+// Method 1 (TEMPORARY): Apply changes directly and instantly without modal prompt
+// Method 2 (PERSISTENT): Triggers GNOME Shell's native confirmation dialog (20s countdown)
 const METHOD_INSTANT = 1;
 const METHOD_CONFIRM_20S = 2;
 
-// Directorio y archivo para persistir preferencias locales
+// Local directory and file path to persist preferences
 const CONFIG_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'quick-scale-switcher']);
 const CONFIG_FILE = GLib.build_filenamev([CONFIG_DIR, 'config.json']);
 
@@ -85,7 +85,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
         this._fontSettingChangedId = null;
         this._openStateId = null;
 
-        // Contenedor principal con estilo nativo de panel
+        // Main top panel container with native styling
         const box = new St.BoxLayout({
             style_class: 'panel-status-indicators-box',
             reactive: true,
@@ -94,7 +94,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
         });
 
-        // Icono en la barra superior (Top Bar)
+        // Top bar panel icon
         const icon = new St.Icon({
             gicon: new Gio.ThemedIcon({
                 names: [
@@ -109,7 +109,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
         box.add_child(icon);
         this.add_child(box);
 
-        // Inicializar GSettings de fuentes
+        // Initialize font scaling GSettings
         try {
             this._interfaceSettings = new Gio.Settings({ schema_id: 'org.gnome.desktop.interface' });
         } catch (e) {
@@ -117,24 +117,24 @@ class QuickScaleIndicator extends PanelMenu.Button {
             this._interfaceSettings = null;
         }
 
-        // Construir interfaz (Propuesta A: Cuadrícula segmentada compacta)
+        // Build interface (Compact segmented grid layout)
         this._buildMenu();
 
-        // Conectar señales D-Bus y GSettings
+        // Connect D-Bus and GSettings signal handlers
         this._connectSignals();
 
-        // Cargar estado inicial
+        // Load initial state
         this._syncFontScale();
         this._syncDisplayScale();
     }
 
     _buildMenu() {
         // =========================================================================
-        // SECCIÓN 1: Cuadrícula de Escala de Pantalla (3 columnas x 2 filas)
+        // SECTION 1: Display Scale Grid (3 columns x 2 rows)
         // =========================================================================
         const displaySection = new PopupMenu.PopupMenuSection();
 
-        // Encabezado: Icono, Título y Badge con valor activo
+        // Header: Icon, Title, and Badge with active value
         const displayHeaderItem = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -176,7 +176,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
         displayHeaderItem.add_child(displayHeaderBox);
         displaySection.addMenuItem(displayHeaderItem);
 
-        // Cuadrícula de botones de escala de pantalla
+        // Display scale button grid
         const displayGridItem = new PopupMenu.PopupBaseMenuItem({
             activate: false,
             can_focus: false,
@@ -189,12 +189,12 @@ class QuickScaleIndicator extends PanelMenu.Button {
             style_class: 'quick-scale-grid-container',
         });
 
-        // Fila 1: 100%, 125%, 133%
+        // Row 1: 100%, 125%, 133%
         const displayRow1 = new St.BoxLayout({
             x_expand: true,
             style_class: 'quick-scale-row',
         });
-        // Fila 2: 150%, 166%, 200%
+        // Row 2: 150%, 166%, 200%
         const displayRow2 = new St.BoxLayout({
             x_expand: true,
             style_class: 'quick-scale-row',
@@ -232,11 +232,11 @@ class QuickScaleIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(displaySection);
 
         // =========================================================================
-        // SECCIÓN 2: Cuadrícula de Escala de Fuentes (4 columnas x 2 filas + Reset)
+        // SECTION 2: Font Scale Grid (4 columns x 2 rows + Reset)
         // =========================================================================
         const fontSection = new PopupMenu.PopupMenuSection();
 
-        // Encabezado: Icono, Título y Badge
+        // Header: Icon, Title, and Badge
         const fontHeaderItem = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -279,7 +279,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
         fontHeaderItem.add_child(fontHeaderBox);
         fontSection.addMenuItem(fontHeaderItem);
 
-        // Cuadrícula de fuentes
+        // Font button grid
         const fontGridItem = new PopupMenu.PopupBaseMenuItem({
             activate: false,
             can_focus: false,
@@ -292,12 +292,12 @@ class QuickScaleIndicator extends PanelMenu.Button {
             style_class: 'quick-scale-grid-container',
         });
 
-        // Fila 1: 0.66, 1.00, 1.25, 1.33
+        // Row 1: 0.66, 1.00, 1.25, 1.33
         const fontRow1 = new St.BoxLayout({
             x_expand: true,
             style_class: 'quick-scale-row',
         });
-        // Fila 2: 1.50, 1.66, 2.00, [↺ 1x]
+        // Row 2: 1.50, 1.66, 2.00, [↺ 1x]
         const fontRow2 = new St.BoxLayout({
             x_expand: true,
             style_class: 'quick-scale-row',
@@ -328,7 +328,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
             }
         });
 
-        // Botón de reinicio rápido [↺ 1x] en la 4ª posición de la Fila 2
+        // Quick reset button [↺ 1x] in the 4th position of Row 2
         const resetBox = new St.BoxLayout({
             style_class: 'quick-scale-reset-box',
             x_align: Clutter.ActorAlign.CENTER,
@@ -374,11 +374,11 @@ class QuickScaleIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(fontSection);
 
         // =========================================================================
-        // SECCIÓN 3: Separador, Modo Seguro y Configuración
+        // SECTION 3: Separator, Safe Mode, and Display Settings
         // =========================================================================
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        // Interruptor Modo seguro / Confirmación en 20s
+        // Safe Mode switch / 20s confirmation countdown
         const safeModeItem = new PopupMenu.PopupSwitchMenuItem(
             _('Confirm display changes (20s)'),
             this._safeMode
@@ -398,7 +398,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
         });
         safeModeItem.insert_child_below(safeIcon, safeModeItem.label);
 
-        // Permitir alternar el interruptor sin cerrar el menú desplegable
+        // Allow toggling the switch without closing the popup menu
         safeModeItem.activate = function (_event) {
             this.toggle();
         };
@@ -409,7 +409,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
         });
         this.menu.addMenuItem(safeModeItem);
 
-        // Acceso directo a Configuración de Pantalla de GNOME
+        // Shortcut to GNOME Display Settings
         const settingsGIcon = new Gio.ThemedIcon({
             names: [
                 'preferences-desktop-display-symbolic',
@@ -437,7 +437,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
     }
 
     _connectSignals() {
-        // Sincronizar bajo demanda al abrir el menú (0 coste de CPU en reposo)
+        // Synchronize on demand when menu opens (0% idle CPU overhead)
         this._openStateId = this.menu.connect('open-state-changed', (menu, isOpen) => {
             if (isOpen && !this._destroyed) {
                 this._syncDisplayScale();
@@ -445,7 +445,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
             }
         });
 
-        // Suscripción de señal D-Bus de Mutter totalmente asíncrona
+        // Fully asynchronous Mutter D-Bus signal subscription
         try {
             this._monitorsChangedId = Gio.DBus.session.signal_subscribe(
                 MUTTER_BUS_NAME,
@@ -465,7 +465,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
             this._monitorsChangedId = null;
         }
 
-        // Sincronizar cambios externos en factor de escala de fuentes
+        // Synchronize external changes to font scaling factor
         if (this._interfaceSettings) {
             this._fontSettingChangedId = this._interfaceSettings.connect(
                 'changed::text-scaling-factor',
@@ -627,7 +627,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                     const primaryLm = logicalMonitors[tIndex];
                     const primaryConnector = primaryLm[5]?.[0]?.[0];
 
-                    // Buscar el modo actual del monitor principal para obtener resolución y supported_scales
+                    // Find current mode of the primary monitor to get resolution and supported_scales
                     let primaryCurrentMode = null;
                     for (const m of monitors) {
                         if (m[0][0] === primaryConnector) {
@@ -642,7 +642,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                         }
                     }
 
-                    // Ajustar al valor exacto soportado por Mutter
+                    // Snap to exact scale supported by Mutter
                     let exactScale = scaleOption.target;
                     if (primaryCurrentMode && Array.isArray(primaryCurrentMode[5])) {
                         const supported = primaryCurrentMode[5].map(s => (s?.deepUnpack ? s.deepUnpack() : s));
@@ -660,7 +660,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                         }
                     }
 
-                    // Cálculo de desplazamiento en layouts multimonitor para evitar superposiciones inválidas
+                    // Multi-monitor coordinate shift calculation to prevent invalid overlap
                     const oldScale = primaryLm[2];
                     const modeW = primaryCurrentMode ? primaryCurrentMode[1] : 0;
                     const modeH = primaryCurrentMode ? primaryCurrentMode[2] : 0;
@@ -677,7 +677,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                         deltaH = newLogicalH - oldLogicalH;
                     }
 
-                    // Reconstruir la configuración de monitores lógicos preservando resolución nativa y refresco
+                    // Reconstruct logical monitors config preserving native mode and refresh rate
                     const newLogicalMonitors = logicalMonitors.map((lm, idx) => {
                         const [x, y, scale, transform, isPrimary, lmMonitors] = lm;
                         const isTarget = idx === tIndex;
@@ -685,7 +685,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
                         let newX = x;
                         let newY = y;
 
-                        // Desplazar monitores adyacentes a la derecha o abajo si la escala del principal cambia
+                        // Shift adjacent monitors right or down if primary monitor logical size changes
                         if (!isTarget && deltaW !== 0 && oldScale > 0) {
                             if (x >= Math.round(modeW / oldScale)) {
                                 newX = Math.max(0, x + deltaW);
@@ -727,7 +727,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
 
                     const method = this._safeMode ? METHOD_CONFIRM_20S : METHOD_INSTANT;
 
-                    // Aplicar en Mutter según el modo seleccionado (instantáneo o con confirmación de 20s)
+                    // Apply in Mutter according to selected mode (instant or 20s confirmation countdown)
                     Gio.DBus.session.call(
                         MUTTER_BUS_NAME,
                         MUTTER_OBJECT_PATH,

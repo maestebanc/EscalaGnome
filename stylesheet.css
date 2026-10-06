@@ -5,7 +5,7 @@
     margin: 0 2px;
 }
 
-/* Encabezados de sección (Icono + Título + Badge) */
+/* Section headers (Icon + Title + Badge) */
 .quick-scale-header-item {
     padding: 6px 12px 4px 12px;
 }
@@ -26,7 +26,7 @@
     font-size: 0.9em;
 }
 
-/* Badge con valor numérico activo */
+/* Active numerical badge */
 .quick-scale-badge {
     font-weight: bold;
     font-size: 0.82em;
@@ -38,7 +38,7 @@
     color: -st-accent-fg-color;
 }
 
-/* Contenedor de la cuadrícula de botones */
+/* Button grid container */
 .quick-scale-grid-item {
     padding: 2px 10px 8px 10px;
 }
@@ -52,7 +52,7 @@
     spacing: 4px;
 }
 
-/* Botones / pastillas de la cuadrícula */
+/* Grid buttons / pills */
 .quick-scale-btn {
     border-radius: 8px;
     padding: 6px 2px;
@@ -67,7 +67,7 @@
     text-align: center;
 }
 
-/* Botón activo / seleccionado (Azul Adwaita / Color de acento) */
+/* Active / selected button (Adwaita blue / accent color) */
 .quick-scale-btn-active {
     background-color: #3584e4;
     background-color: -st-accent-color;
@@ -83,7 +83,7 @@
     color: -st-accent-fg-color !important;
 }
 
-/* Botón de reinicio rápido (↺ 1x) */
+/* Quick reset button (↺ 1x) */
 .quick-scale-reset-box {
     spacing: 3px;
 }
@@ -97,7 +97,7 @@
     font-weight: 600;
 }
 
-/* Icono de interruptor de Modo Seguro */
+/* Safe Mode switch icon */
 .quick-scale-safe-icon {
     icon-size: 16px;
     margin-right: 6px;
