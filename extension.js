@@ -70,6 +70,16 @@ function saveSafeMode(val) {
     }
 }
 
+function createVerticalBoxLayout(params = {}) {
+    const isOrientationSupported = 'orientation' in St.BoxLayout.prototype;
+    return new St.BoxLayout({
+        ...(isOrientationSupported
+            ? { orientation: Clutter.Orientation.VERTICAL }
+            : { vertical: true }),
+        ...params,
+    });
+}
+
 const QuickScaleIndicator = GObject.registerClass(
 class QuickScaleIndicator extends PanelMenu.Button {
     _init(extension) {
@@ -183,8 +193,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
             reactive: true,
             style_class: 'quick-scale-grid-item',
         });
-        const displayGridBox = new St.BoxLayout({
-            vertical: true,
+        const displayGridBox = createVerticalBoxLayout({
             x_expand: true,
             style_class: 'quick-scale-grid-container',
         });
@@ -286,8 +295,7 @@ class QuickScaleIndicator extends PanelMenu.Button {
             reactive: true,
             style_class: 'quick-scale-grid-item',
         });
-        const fontGridBox = new St.BoxLayout({
-            vertical: true,
+        const fontGridBox = createVerticalBoxLayout({
             x_expand: true,
             style_class: 'quick-scale-grid-container',
         });

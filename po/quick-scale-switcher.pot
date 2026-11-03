@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-06 23:34+0200\n"
+"POT-Creation-Date: 2026-10-06 23:35+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,32 +17,32 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: extension.js:163
+#: extension.js:173
 msgid "Display scale"
 msgstr ""
 
-#: extension.js:266
+#: extension.js:275
 msgid "Font scale"
 msgstr ""
 
-#: extension.js:361
+#: extension.js:369
 msgid "Reset to defaults (100% / 1.00)"
 msgstr ""
 
-#: extension.js:383
+#: extension.js:391
 msgid "Confirm display changes (20s)"
 msgstr ""
 
-#: extension.js:421
+#: extension.js:429
 msgid "Display Settings…"
 msgstr ""
 
-#: extension.js:534
+#: extension.js:542
 #, javascript-format
 msgid "Error setting font scale: %s"
 msgstr ""
 
-#: extension.js:756
+#: extension.js:764
 #, javascript-format
 msgid ""
 "Error applying display scale. Make sure fractional scaling is enabled in "

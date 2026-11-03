@@ -94,21 +94,25 @@ echo -e "\n${BOLD}[3/4] Checking Mutter fractional scaling support...${NC}"
 MUTTER_SCHEMA="org.gnome.mutter"
 FEATURE_NAME="scale-monitor-framebuffer"
 
-CURRENT_FEATURES=$(gsettings get ${MUTTER_SCHEMA} experimental-features 2>/dev/null || echo "@as []")
 MUTTER_UPDATED=false
 
-if [[ "${CURRENT_FEATURES}" != *"${FEATURE_NAME}"* ]]; then
-    echo -e "  Enabling '${FEATURE_NAME}' in ${MUTTER_SCHEMA} experimental-features..."
-    if [[ "${CURRENT_FEATURES}" == "@as []" || "${CURRENT_FEATURES}" == "[]" || -z "${CURRENT_FEATURES}" ]]; then
-        gsettings set ${MUTTER_SCHEMA} experimental-features "['${FEATURE_NAME}']"
+if gsettings list-keys "${MUTTER_SCHEMA}" 2>/dev/null | grep -q "^experimental-features$"; then
+    CURRENT_FEATURES=$(gsettings get ${MUTTER_SCHEMA} experimental-features 2>/dev/null || echo "@as []")
+    if [[ "${CURRENT_FEATURES}" != *"${FEATURE_NAME}"* ]]; then
+        echo -e "  Enabling '${FEATURE_NAME}' in ${MUTTER_SCHEMA} experimental-features..."
+        if [[ "${CURRENT_FEATURES}" == "@as []" || "${CURRENT_FEATURES}" == "[]" || -z "${CURRENT_FEATURES}" ]]; then
+            gsettings set ${MUTTER_SCHEMA} experimental-features "['${FEATURE_NAME}']"
+        else
+            UPDATED_FEATURES=$(echo "${CURRENT_FEATURES}" | sed "s/]$/, '${FEATURE_NAME}']/")
+            gsettings set ${MUTTER_SCHEMA} experimental-features "${UPDATED_FEATURES}"
+        fi
+        echo -e "  ${GREEN}✓ Fractional scaling enabled in Mutter.${NC}"
+        MUTTER_UPDATED=true
     else
-        UPDATED_FEATURES=$(echo "${CURRENT_FEATURES}" | sed "s/]$/, '${FEATURE_NAME}']/")
-        gsettings set ${MUTTER_SCHEMA} experimental-features "${UPDATED_FEATURES}"
+        echo -e "  ${GREEN}✓ '${FEATURE_NAME}' is already enabled in Mutter.${NC}"
     fi
-    echo -e "  ${GREEN}✓ Fractional scaling enabled in Mutter.${NC}"
-    MUTTER_UPDATED=true
 else
-    echo -e "  ${GREEN}✓ '${FEATURE_NAME}' is already enabled in Mutter.${NC}"
+    echo -e "  ${GREEN}✓ Fractional scaling is enabled natively in Mutter.${NC}"
 fi
 
 # ------------------------------------------------------------------------------
